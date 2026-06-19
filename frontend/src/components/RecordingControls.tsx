@@ -1,0 +1,534 @@
+'use client';
+
+import { invoke } from '@tauri-apps/api/core';
+import { appDataDir } from '@tauri-apps/api/path';
+import { useCallback, useEffect, useState, useRef } from 'react';
+import { Play, Pause, Mic, AlertCircle, X } from 'lucide-react';
+import { ProcessRequest, SummaryResponse } from '@/types/summary';
+import { listen } from '@tauri-apps/api/event';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import Analytics from '@/lib/analytics';
+import { useRecordingState } from '@/contexts/RecordingStateContext';
+
+interface RecordingControlsProps {
+  isRecording: boolean;
+  barHeights: string[];
+  onRecordingStop: (callApi?: boolean) => void;
+  onRecordingStart: () => void;
+  onTranscriptReceived: (summary: SummaryResponse) => void;
+  onTranscriptionError?: (message: string) => void;
+  onStopInitiated?: () => void;
+  isRecordingDisabled: boolean;
+  isParentProcessing: boolean;
+  selectedDevices?: {
+    micDevice: string | null;
+    systemDevice: string | null;
+  };
+  meetingName?: string;
+  variant?: 'transport' | 'pause';
+}
+
+export const RecordingControls: React.FC<RecordingControlsProps> = ({
+  isRecording,
+  barHeights,
+  onRecordingStop,
+  onRecordingStart,
+  onTranscriptReceived,
+  onTranscriptionError,
+  onStopInitiated,
+  isRecordingDisabled,
+  isParentProcessing,
+  selectedDevices,
+  meetingName,
+  variant = 'transport',
+}) => {
+  const recordingState = useRecordingState();
+  const isPaused = recordingState.isPaused;
+  const activeDuration = recordingState.activeDuration;
+
+  const [showPlayback, setShowPlayback] = useState(false);
+  const [recordingPath, setRecordingPath] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState<string>('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
+  const MIN_RECORDING_DURATION = 2000;
+  const [transcriptionErrors, setTranscriptionErrors] = useState(0);
+  const [isValidatingModel, setIsValidatingModel] = useState(false);
+  const [speechDetected, setSpeechDetected] = useState(false);
+  const [deviceError, setDeviceError] = useState<{ title: string, message: string } | null>(null);
+
+  const currentTime = 0;
+  const duration = 0;
+  const isPlaying = false;
+  const progress = 0;
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const formatDuration = (seconds: number): string => {
+    const total = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    if (variant !== 'transport') return;
+    const checkTauri = async () => {
+      try {
+        const result = await invoke('is_recording');
+        console.log('Tauri is initialized and ready, is_recording result:', result);
+      } catch (error) {
+        console.error('Tauri initialization error:', error);
+        alert('Failed to initialize recording. Please check the console for details.');
+      }
+    };
+    checkTauri();
+  }, [variant]);
+
+  const handleStartRecording = useCallback(async () => {
+    if (isStarting || isValidatingModel) return;
+    console.log('Starting recording...');
+    console.log('Selected devices:', selectedDevices);
+    console.log('Meeting name:', meetingName);
+    console.log('Current isRecording state:', isRecording);
+
+    setShowPlayback(false);
+    setTranscript('');
+    setSpeechDetected(false);
+
+    try {
+      await onRecordingStart();
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        name: error instanceof Error ? error.name : 'Unknown',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+
+      const errorMsg = error instanceof Error ? error.message : String(error);
+
+      if (errorMsg.includes('microphone') || errorMsg.includes('mic') || errorMsg.includes('input')) {
+        setDeviceError({
+          title: 'Microphone Not Available',
+          message: 'Unable to access your microphone. Please check that:\n• Your microphone is connected\n• The app has microphone permissions\n• No other app is using the microphone'
+        });
+      } else if (errorMsg.includes('system audio') || errorMsg.includes('speaker') || errorMsg.includes('output')) {
+        setDeviceError({
+          title: 'System Audio Not Available',
+          message: 'Unable to capture system audio. Please check that:\n• A virtual audio device (like BlackHole) is installed\n• The app has screen recording permissions (macOS)\n• System audio is properly configured'
+        });
+      } else if (errorMsg.includes('permission')) {
+        setDeviceError({
+          title: 'Permission Required',
+          message: 'Recording permissions are required. Please:\n• Grant microphone access in System Settings\n• Grant screen recording access for system audio (macOS)\n• Restart the app after granting permissions'
+        });
+      } else {
+        setDeviceError({
+          title: 'Recording Failed',
+          message: 'Unable to start recording. Please check your audio device settings and try again.'
+        });
+      }
+    }
+  }, [onRecordingStart, isStarting, isValidatingModel, selectedDevices, meetingName, isRecording]);
+
+  const stopRecordingAction = useCallback(async () => {
+    console.log('Executing stop recording...');
+    try {
+      setIsProcessing(true);
+      const dataDir = await appDataDir();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const savePath = `${dataDir}/recording-${timestamp}.wav`;
+      console.log('Saving recording to:', savePath);
+      console.log('About to call stop_recording command');
+      const result = await invoke('stop_recording', {
+        args: {
+          save_path: savePath
+        }
+      });
+      console.log('stop_recording command completed successfully:', result);
+      setRecordingPath(savePath);
+      setIsProcessing(false);
+      Analytics.trackTranscriptionSuccess();
+      onRecordingStop(true);
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+        });
+        if (error.message.includes('No recording in progress')) {
+          return;
+        }
+      } else if (typeof error === 'string' && error.includes('No recording in progress')) {
+        return;
+      } else if (error && typeof error === 'object' && 'toString' in error) {
+        if (error.toString().includes('No recording in progress')) {
+          return;
+        }
+      }
+      setIsProcessing(false);
+      onRecordingStop(false);
+    } finally {
+      setIsStopping(false);
+    }
+  }, [onRecordingStop]);
+
+  const handleStopRecording = useCallback(async () => {
+    console.log('handleStopRecording called - isRecording:', isRecording, 'isStarting:', isStarting, 'isStopping:', isStopping);
+    if (!isRecording || isStarting || isStopping) {
+      console.log('Early return from handleStopRecording due to state check');
+      return;
+    }
+
+    console.log('Stopping recording...');
+
+    onStopInitiated?.();
+
+    setIsStopping(true);
+
+    await stopRecordingAction();
+  }, [isRecording, isStarting, isStopping, stopRecordingAction, onStopInitiated]);
+
+  const handlePauseRecording = useCallback(async () => {
+    if (!isRecording || isPaused || isPausing) return;
+
+    console.log('Pausing recording...');
+    setIsPausing(true);
+
+    try {
+      await invoke('pause_recording');
+      console.log('Recording paused successfully');
+    } catch (error) {
+      console.error('Failed to pause recording:', error);
+      alert('Failed to pause recording. Please check the console for details.');
+    } finally {
+      setIsPausing(false);
+    }
+  }, [isRecording, isPaused, isPausing]);
+
+  const handleResumeRecording = useCallback(async () => {
+    if (!isRecording || !isPaused || isResuming) return;
+
+    console.log('Resuming recording...');
+    setIsResuming(true);
+
+    try {
+      await invoke('resume_recording');
+      console.log('Recording resumed successfully');
+    } catch (error) {
+      console.error('Failed to resume recording:', error);
+      alert('Failed to resume recording. Please check the console for details.');
+    } finally {
+      setIsResuming(false);
+    }
+  }, [isRecording, isPaused, isResuming]);
+
+  useEffect(() => {
+    return () => {
+    };
+  }, []);
+
+  useEffect(() => {
+    if (variant !== 'transport') return;
+    console.log('Setting up recording event listeners');
+    let unsubscribes: (() => void)[] = [];
+
+    const setupListeners = async () => {
+      try {
+        const transcriptErrorUnsubscribe = await listen('transcript-error', (event) => {
+          console.log('transcript-error event received:', event);
+          console.error('Transcription error received:', event.payload);
+          const errorMessage = event.payload as string;
+
+          Analytics.trackTranscriptionError(errorMessage);
+          console.log('Tracked transcription error:', errorMessage);
+
+          setTranscriptionErrors(prev => {
+            const newCount = prev + 1;
+            console.log('Transcription error count incremented:', newCount);
+            return newCount;
+          });
+          setIsProcessing(false);
+          console.log('Calling onRecordingStop(false) due to transcript error');
+          onRecordingStop(false);
+          if (onTranscriptionError) {
+            onTranscriptionError(errorMessage);
+          }
+        });
+
+        const transcriptionErrorUnsubscribe = await listen('transcription-error', (event) => {
+          console.log('transcription-error event received:', event);
+          console.error('Transcription error received:', event.payload);
+
+          let errorMessage: string;
+          let isActionable = false;
+
+          if (typeof event.payload === 'object' && event.payload !== null) {
+            const payload = event.payload as { error: string, userMessage: string, actionable: boolean };
+            errorMessage = payload.userMessage || payload.error;
+            isActionable = payload.actionable || false;
+          } else {
+            errorMessage = String(event.payload);
+          }
+
+          Analytics.trackTranscriptionError(errorMessage);
+          console.log('Tracked transcription error:', errorMessage);
+
+          setTranscriptionErrors(prev => {
+            const newCount = prev + 1;
+            console.log('Transcription error count incremented:', newCount);
+            return newCount;
+          });
+          setIsProcessing(false);
+          console.log('Calling onRecordingStop(false) due to transcription error');
+          onRecordingStop(false);
+
+        });
+
+        const speechDetectedUnsubscribe = await listen('speech-detected', (event) => {
+          console.log('speech-detected event received:', event);
+          setSpeechDetected(true);
+        });
+
+        unsubscribes = [
+          transcriptErrorUnsubscribe,
+          transcriptionErrorUnsubscribe,
+          speechDetectedUnsubscribe
+        ];
+        console.log('Recording event listeners set up successfully');
+      } catch (error) {
+        console.error('Failed to set up recording event listeners:', error);
+      }
+    };
+
+    setupListeners();
+
+    return () => {
+      console.log('Cleaning up recording event listeners');
+      unsubscribes.forEach(unsubscribe => {
+        if (unsubscribe && typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      });
+    };
+  }, [onRecordingStop, onTranscriptionError, variant]);
+
+  if (variant === 'pause') {
+    if (!isRecording) return null;
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => {
+                if (isPaused) {
+                  Analytics.trackButtonClick('resume_recording', 'recording_controls');
+                  handleResumeRecording();
+                } else {
+                  Analytics.trackButtonClick('pause_recording', 'recording_controls');
+                  handlePauseRecording();
+                }
+              }}
+              disabled={isPausing || isResuming || isStopping}
+              className={`h-[34px] w-[34px] flex items-center justify-center rounded-[9px] border border-line bg-transparent transition-colors relative ${isPausing || isResuming || isStopping
+                ? 'text-fg-faint'
+                : 'text-fg-muted hover:bg-surface'
+                }`}
+            >
+              {isPaused ? <Play size={15} /> : <Pause size={15} />}
+              {(isPausing || isResuming) && (
+                <div className="absolute -top-8 text-fg-muted font-medium text-xs whitespace-nowrap">
+                  {isPausing ? 'Пауза…' : 'Возобновление…'}
+                </div>
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{isPaused ? 'Возобновить запись' : 'Пауза'}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return (
+    <TooltipProvider>
+      <div className="flex flex-col">
+        <div className="flex items-center justify-center">
+          {isProcessing && !isParentProcessing ? (
+            <div className="flex items-center space-x-2">
+              <div className="animate-spin rounded-full h-5 w-5 border-2 border-accent-weak border-t-accent"></div>
+              <span className="text-sm text-fg-muted">Обработка записи…</span>
+            </div>
+          ) : (
+            <>
+              {showPlayback ? (
+                <>
+                  <button
+                    onClick={handleStartRecording}
+                    className="w-10 h-10 flex items-center justify-center bg-rec rounded-full text-white hover:opacity-90 transition-opacity"
+                  >
+                    <Mic size={16} />
+                  </button>
+
+                  <div className="w-px h-6 bg-line mx-1" />
+
+                  <div className="flex items-center space-x-1 mx-2">
+                    <div className="font-mono text-caption text-fg-muted min-w-[40px]">
+                      {formatTime(currentTime)}
+                    </div>
+                    <div
+                      className="relative w-24 h-1 bg-surface rounded-full"
+                    >
+                      <div
+                        className="absolute h-full bg-accent rounded-full"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <div className="font-mono text-caption text-fg-muted min-w-[40px]">
+                      {formatTime(duration)}
+                    </div>
+                  </div>
+
+                  <button
+                    className="w-10 h-10 flex items-center justify-center bg-elevated rounded-full text-fg-faint cursor-not-allowed"
+                    disabled
+                  >
+                    <Play size={16} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  {!isRecording ? (
+                    <div className="flex flex-col items-center gap-[20px] mt-[46px]">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => {
+                              Analytics.trackButtonClick('start_recording', 'recording_controls');
+                              handleStartRecording();
+                            }}
+                            disabled={isStarting || isProcessing || isRecordingDisabled || isValidatingModel}
+                            className={`relative w-[76px] h-[76px] flex items-center justify-center rounded-full text-white transition-all ${isStarting || isProcessing || isValidatingModel
+                              ? 'bg-elevated text-fg-faint'
+                              : 'bg-accent hover:opacity-90 shadow-glow'
+                              }`}
+                          >
+                            {!(isStarting || isProcessing || isValidatingModel) && (
+                              <span className="pointer-events-none absolute inset-[-9px] rounded-full border border-accent/30" />
+                            )}
+                            {isValidatingModel ? (
+                              <div className="animate-spin rounded-full h-7 w-7 border-2 border-white/40 border-t-white"></div>
+                            ) : (
+                              <Mic size={26} />
+                            )}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Начать запись</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <span className="font-mono text-[12px] text-fg-faint tracking-[0.02em]">⌘R&nbsp;&nbsp;чтобы начать</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-[24px]">
+                      {}
+                      <div className="flex items-center gap-[3px] h-[40px]">
+                        {barHeights.map((height, index) => (
+                          <div
+                            key={index}
+                            className={`w-[3px] rounded-[2px] transition-all duration-200 ${isPaused ? 'bg-warn' : 'bg-accent'
+                              }`}
+                            style={{
+                              height: isRecording && !isPaused ? height : '4px',
+                              opacity: isPaused ? 0.6 : 1,
+                            }}
+                          />
+                        ))}
+                      </div>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => {
+                              Analytics.trackButtonClick('stop_recording', 'recording_controls');
+                              handleStopRecording();
+                            }}
+                            disabled={isStopping || isPausing || isResuming}
+                            className={`w-[64px] h-[64px] flex items-center justify-center rounded-full transition-all relative ${isStopping || isPausing || isResuming
+                              ? 'bg-elevated'
+                              : 'bg-rec hover:opacity-90 shadow-[0_10px_28px_rgba(239,68,68,0.4)]'
+                              }`}
+                          >
+                            <span className={`w-[22px] h-[22px] rounded-[6px] block ${isStopping || isPausing || isResuming ? 'bg-fg-faint' : 'bg-white'}`} />
+                            {isStopping && (
+                              <div className="absolute -top-8 text-fg-muted font-medium text-xs whitespace-nowrap">
+                                Остановка…
+                              </div>
+                            )}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Остановить запись</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      {}
+                      <span className="font-mono text-[15px] text-rec tabular-nums w-[54px]">
+                        {formatDuration(activeDuration ?? 0)}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {}
+        {isValidatingModel && (
+          <div className="text-xs text-fg-muted text-center mt-2">
+            Проверка модели распознавания…
+          </div>
+        )}
+
+        {}
+        {deviceError && (
+          <Alert variant="destructive" className="mt-4 border-rec/30 bg-rec/10">
+            <AlertCircle className="h-5 w-5 text-rec" />
+            <button
+              onClick={() => setDeviceError(null)}
+              className="absolute right-3 top-3 text-rec hover:opacity-80 transition-opacity"
+              aria-label="Закрыть уведомление"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <AlertTitle className="text-rec font-semibold mb-2">
+              {deviceError.title}
+            </AlertTitle>
+            <AlertDescription className="text-fg-muted">
+              {deviceError.message.split('\n').map((line, i) => (
+                <div key={i} className={i > 0 ? 'ml-2' : ''}>
+                  {line}
+                </div>
+              ))}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {}
+      </div>
+    </TooltipProvider>
+  );
+};
