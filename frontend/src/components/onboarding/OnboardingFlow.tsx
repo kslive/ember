@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import {
+  LanguageSelectionStep,
   WelcomeStep,
   PermissionsStep,
   DownloadProgressStep,
@@ -30,10 +31,11 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   }, []);
 
   const stepEl =
-    currentStep === 1 ? <WelcomeStep /> :
-    currentStep === 2 ? <SetupOverviewStep /> :
-    currentStep === 3 ? <DownloadProgressStep /> :
-    currentStep === 4 && isMac ? <PermissionsStep /> :
+    currentStep === 1 ? <LanguageSelectionStep /> :
+    currentStep === 2 ? <WelcomeStep /> :
+    currentStep === 3 ? <SetupOverviewStep /> :
+    currentStep === 4 ? <DownloadProgressStep /> :
+    currentStep === 5 && isMac ? <PermissionsStep /> :
     null;
 
   const prevStep = useRef(currentStep);

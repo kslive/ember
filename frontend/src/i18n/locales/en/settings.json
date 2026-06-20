@@ -1,0 +1,68 @@
+{
+  "language": {
+    "label": "Interface language",
+    "description": "The language the app is displayed in."
+  },
+  "tabs": {
+    "general": "General",
+    "recording": "Recording",
+    "transcription": "Transcription",
+    "summary": "Summary"
+  },
+  "chrome": {
+    "title": "Settings",
+    "back": "Back"
+  },
+  "modal": {
+    "transcriptionSetupTitle": "Speech recognition needs to be set up",
+    "transcriptionSettingsTitle": "Transcription model settings",
+    "confidenceIndicators": "Confidence indicators",
+    "confidenceIndicatorsDesc": "Colored dots show transcription confidence",
+    "cancel": "Cancel",
+    "done": "Done"
+  },
+  "transcription": {
+    "language": "Transcription language",
+    "parakeet": {
+      "title": "Language support in Parakeet",
+      "desc": "Parakeet currently supports only automatic language detection. Manual language selection is unavailable. Use Whisper if you need to specify a particular language."
+    },
+    "current": "Current:",
+    "autoWarning": {
+      "title": "Auto-detect may produce incorrect results",
+      "desc": "For best accuracy, choose a specific language (e.g. English, Spanish, etc.)"
+    },
+    "translate": {
+      "title": "Translation mode is active",
+      "desc": "All audio will be automatically translated to English. Suitable for multilingual meetings when you need the result in English."
+    },
+    "optimizedFor": "Transcription will be optimized for <strong>{{language}}</strong>",
+    "saved": "Language setting saved",
+    "savedDescription": "Transcription language: {{language}}",
+    "saveFailed": "Failed to save language setting"
+  },
+  "general": {
+    "theme": {
+      "title": "Theme",
+      "desc": "Appearance of the app",
+      "light": "Light",
+      "dark": "Dark",
+      "auto": "Auto"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "desc": "Show notifications when recording starts and stops"
+    },
+    "export": {
+      "title": "Export summary to Markdown",
+      "desc": "Folder where .md files are saved when exporting a meeting summary.",
+      "notChosen": "Not selected"
+    },
+    "data": {
+      "title": "Data location",
+      "recordings": "Meeting recordings",
+      "loadingPath": "Loading…"
+    },
+    "loading": "Loading settings…"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "searchPlaceholder": "Search meetings",
+  "nav": {
+    "home": "Home",
+    "settings": "Settings"
+  },
+  "meetingsHeader": "Meetings",
+  "untitledMeeting": "Meeting",
+  "search": {
+    "inProgress": "Searching…",
+    "noResults": "Nothing found."
+  },
+  "empty": {
+    "noMeetings": "No meetings yet.",
+    "startFirst": "Start your first recording."
+  },
+  "dateGroups": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "noDate": "No date"
+  },
+  "actions": {
+    "rename": "Rename",
+    "delete": "Delete"
+  },
+  "toasts": {
+    "deleted": "Meeting deleted",
+    "deleteFailed": "Failed to delete",
+    "titleEmpty": "Title cannot be empty",
+    "titleUpdated": "Title updated",
+    "updateFailed": "Failed to update"
+  },
+  "deleteDialog": {
+    "title": "Delete meeting?",
+    "message": "The transcript, summary and audio of the meeting “{{title}}” will be deleted. This action cannot be undone.",
+    "confirm": "Delete",
+    "cancel": "Cancel"
+  },
+  "renameDialog": {
+    "title": "Rename meeting",
+    "description": "Enter a new name for the meeting.",
+    "placeholder": "Meeting name",
+    "cancel": "Cancel",
+    "save": "Save"
+  }
+}

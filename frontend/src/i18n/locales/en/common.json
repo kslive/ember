@@ -1,0 +1,28 @@
+{
+  "cancel": "Cancel",
+  "save": "Save",
+  "delete": "Delete",
+  "back": "Back",
+  "done": "Done",
+  "continue": "Continue",
+  "open": "Open",
+  "select": "Select",
+  "close": "Close",
+  "editableTitle": {
+    "rename": "Rename meeting",
+    "delete": "Delete"
+  },
+  "summaryExport": {
+    "device": "Mac",
+    "type": "Meeting"
+  },
+  "languages": {
+    "en": "English",
+    "zh": "中文",
+    "ru": "Русский"
+  },
+  "onboardingRequired": {
+    "title": "Complete setup first",
+    "description": "Finish onboarding first, then you can record."
+  }
+}

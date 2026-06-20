@@ -3,6 +3,7 @@ import {
   requestPermission,
   sendNotification,
 } from '@tauri-apps/plugin-notification';
+import i18n from '@/i18n';
 
 let cachedGranted: boolean | null = null;
 
@@ -33,13 +34,24 @@ async function send(title: string, body?: string): Promise<void> {
 }
 
 export const notify = {
-  recordingStarted: () => send('Запись начата', 'Ember записывает встречу.'),
+  recordingStarted: () =>
+    send(i18n.t('recording:notify.started.title'), i18n.t('recording:notify.started.body')),
   recordingStopped: (meetingTitle?: string) =>
-    send('Запись остановлена', meetingTitle ? `«${meetingTitle}» сохранена.` : 'Встреча сохранена.'),
+    send(
+      i18n.t('recording:notify.stopped.title'),
+      meetingTitle
+        ? i18n.t('recording:notify.stopped.bodyWithTitle', { title: meetingTitle })
+        : i18n.t('recording:notify.stopped.body')
+    ),
   summaryReady: (meetingTitle?: string) =>
-    send('Саммари готово', meetingTitle ? `«${meetingTitle}» — сводка сгенерирована.` : 'Сводка встречи готова.'),
+    send(
+      i18n.t('recording:notify.summaryReady.title'),
+      meetingTitle
+        ? i18n.t('recording:notify.summaryReady.bodyWithTitle', { title: meetingTitle })
+        : i18n.t('recording:notify.summaryReady.body')
+    ),
   summaryFailed: (msg?: string) =>
-    send('Саммари не сгенерировалось', msg || 'Подробности в окне встречи.'),
+    send(i18n.t('recording:notify.summaryFailed.title'), msg || i18n.t('recording:notify.summaryFailed.body')),
 };
 
 export default notify;

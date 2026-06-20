@@ -3,6 +3,8 @@ import { Transcript, Summary } from '@/types';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
+import { formatDate, formatDateTime } from '@/lib/datetime';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface UseCopyOperationsProps {
   meeting: any;
@@ -17,6 +19,7 @@ export function useCopyOperations({
   meetingTitle,
   aiSummary,
 }: UseCopyOperationsProps) {
+  const { locale } = useLocale();
 
   const fetchAllTranscripts = useCallback(async (meetingId: string): Promise<Transcript[]> => {
     try {
@@ -74,7 +77,7 @@ export function useCopyOperations({
     };
 
     const header = `# Transcript of the Meeting: ${meeting.id} - ${meetingTitle ?? meeting.title}\n\n`;
-    const date = `## Date: ${new Date(meeting.created_at).toLocaleDateString()}\n\n`;
+    const date = `## Date: ${formatDate(meeting.created_at, locale)}\n\n`;
     const fullTranscript = allTranscripts
       .map(t => `${formatTime(t.audio_start_time, t.timestamp)} ${t.text}  `)
       .join('\n');
@@ -91,7 +94,7 @@ export function useCopyOperations({
       transcript_length: allTranscripts.length.toString(),
       word_count: wordCount.toString()
     });
-  }, [meeting, meetingTitle, fetchAllTranscripts]);
+  }, [meeting, meetingTitle, fetchAllTranscripts, locale]);
 
   const handleCopySummary = useCallback(async () => {
     try {
@@ -134,19 +137,14 @@ export function useCopyOperations({
       }
 
       const header = `# Meeting Summary: ${meetingTitle}\n\n`;
-      const metadata = `**Meeting ID:** ${meeting.id}\n**Date:** ${new Date(meeting.created_at).toLocaleDateString('en-US', {
+      const dateTimeOpts: Intl.DateTimeFormatOptions = {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
-      })}\n**Copied on:** ${new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })}\n\n---\n\n`;
+      };
+      const metadata = `**Meeting ID:** ${meeting.id}\n**Date:** ${formatDateTime(meeting.created_at, locale, dateTimeOpts)}\n**Copied on:** ${formatDateTime(new Date(), locale, dateTimeOpts)}\n\n---\n\n`;
 
       const fullMarkdown = header + metadata + summaryMarkdown;
       await navigator.clipboard.writeText(fullMarkdown);
@@ -162,7 +160,7 @@ export function useCopyOperations({
       console.error('❌ Failed to copy summary:', error);
       toast.error("Failed to copy summary");
     }
-  }, [aiSummary, meetingTitle, meeting]);
+  }, [aiSummary, meetingTitle, meeting, locale]);
 
   return {
     handleCopyTranscript,

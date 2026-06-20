@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { ModelStatus } from '../lib/whisper';
 
 interface ModelDownloadProgressProps {
@@ -8,6 +9,7 @@ interface ModelDownloadProgressProps {
 }
 
 export function ModelDownloadProgress({ status, modelName, onCancel }: ModelDownloadProgressProps) {
+  const { t } = useTranslation('recordingsettings');
   if (typeof status !== 'object' || !('Downloading' in status)) {
     return null;
   }
@@ -21,7 +23,7 @@ export function ModelDownloadProgress({ status, modelName, onCancel }: ModelDown
         <div className="flex items-center gap-2">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent-weak border-t-accent" />
           <span className="font-mono text-[12px] text-accent-text">
-            {isCompleted ? 'Завершение…' : `Скачивание ${modelName}`}
+            {isCompleted ? t('download.finishing') : t('download.downloading', { model: modelName })}
           </span>
         </div>
         {onCancel && !isCompleted && (
@@ -29,7 +31,7 @@ export function ModelDownloadProgress({ status, modelName, onCancel }: ModelDown
             onClick={onCancel}
             className="font-mono text-[11px] text-fg-faint transition-colors hover:text-rec"
           >
-            Отменить
+            {t('download.cancel')}
           </button>
         )}
       </div>
@@ -43,14 +45,14 @@ export function ModelDownloadProgress({ status, modelName, onCancel }: ModelDown
         </div>
         <div className="mt-1 flex justify-between font-mono text-[11px] text-accent-text">
           <span>{Math.round(progress)}%</span>
-          {!isCompleted && <span className="animate-shimmer">Скачивание…</span>}
+          {!isCompleted && <span className="animate-shimmer">{t('download.downloadingShort')}</span>}
         </div>
       </div>
 
       {isCompleted && (
         <div className="mt-2 flex items-center gap-1.5 text-[12px] text-good">
           <span className="h-1.5 w-1.5 rounded-full bg-good" />
-          Загрузка завершена, загружаем модель…
+          {t('download.completed')}
         </div>
       )}
     </div>
@@ -107,21 +109,23 @@ interface DownloadSummaryProps {
 }
 
 export function DownloadSummary({ totalModels, downloadedModels, totalSizeMb }: DownloadSummaryProps) {
+  const { t } = useTranslation('recordingsettings');
+
   const formatSize = (mb: number) => {
-    if (mb >= 1000) return `${(mb / 1000).toFixed(1)} ГБ`;
-    return `${mb} МБ`;
+    if (mb >= 1000) return t('download.sizeGb', { value: (mb / 1000).toFixed(1) });
+    return t('download.sizeMb', { value: mb });
   };
 
   return (
     <div className="rounded-[14px] bg-surface p-3.5">
       <div className="flex items-center justify-between font-mono text-[11.5px] text-fg-muted">
-        <span>{downloadedModels} из {totalModels} моделей готовы</span>
-        <span>{formatSize(totalSizeMb)} всего</span>
+        <span>{t('download.modelsReady', { downloaded: downloadedModels, total: totalModels, count: totalModels })}</span>
+        <span>{t('download.totalSize', { size: formatSize(totalSizeMb) })}</span>
       </div>
       {downloadedModels > 0 && (
         <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-good">
           <span className="h-1.5 w-1.5 rounded-full bg-good" />
-          Модели работают локально — для транскрипции интернет не нужен
+          {t('download.localNote')}
         </div>
       )}
     </div>

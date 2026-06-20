@@ -17,6 +17,8 @@ import { OllamaDownloadProvider } from '@/contexts/OllamaDownloadContext'
 import { TranscriptProvider } from '@/contexts/TranscriptContext'
 import { ConfigProvider } from '@/contexts/ConfigContext'
 import { ThemeProvider } from '@/contexts/ThemeContext'
+import { LocaleProvider } from '@/contexts/LocaleContext'
+import i18n from '@/i18n'
 import { OnboardingProvider } from '@/contexts/OnboardingContext'
 import { OnboardingFlow } from '@/components/onboarding'
 import { DownloadProgressToastProvider } from '@/components/shared/DownloadProgressToast'
@@ -66,8 +68,8 @@ export default function RootLayout({
   useEffect(() => {
     const unlisten = listen('request-recording-toggle', () => {
       if (showOnboarding) {
-        toast.error('Сначала завершите настройку', {
-          description: 'Сначала пройдите онбординг, потом сможете записывать.'
+        toast.error(i18n.t('common:onboardingRequired.title'), {
+          description: i18n.t('common:onboardingRequired.description')
         });
       } else {
         window.dispatchEvent(new CustomEvent('start-recording-from-sidebar'));
@@ -86,6 +88,7 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <RootErrorBoundary>
           <ThemeProvider>
+          <LocaleProvider>
           <AnalyticsProvider>
             <RecordingStateProvider>
               <TranscriptProvider>
@@ -130,6 +133,7 @@ export default function RootLayout({
               </TranscriptProvider>
             </RecordingStateProvider>
           </AnalyticsProvider>
+          </LocaleProvider>
           </ThemeProvider>
         </RootErrorBoundary>
 

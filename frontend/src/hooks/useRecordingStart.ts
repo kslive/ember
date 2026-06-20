@@ -4,6 +4,7 @@ import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { useConfig } from '@/contexts/ConfigContext';
 import { useRecordingState, RecordingStatus } from '@/contexts/RecordingStateContext';
+import { useLocale } from '@/contexts/LocaleContext';
 import { recordingService } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/lib/recordingNotification';
@@ -27,6 +28,8 @@ export function useRecordingStart(
   const { selectedDevices } = useConfig();
   const { setStatus } = useRecordingState();
 
+  const { locale } = useLocale();
+
   const generateMeetingTitle = useCallback(() => {
     const now = new Date();
     const day = String(now.getDate()).padStart(2, '0');
@@ -35,8 +38,9 @@ export function useRecordingStart(
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
-    return `Запись ${day}_${month}_${year}_${hours}_${minutes}_${seconds}`;
-  }, []);
+    const prefix = locale === 'ru' ? 'Запись' : locale === 'zh' ? '录音' : 'Recording';
+    return `${prefix} ${day}_${month}_${year}_${hours}_${minutes}_${seconds}`;
+  }, [locale]);
 
   const checkParakeetReady = useCallback(async (): Promise<boolean> => {
     try {

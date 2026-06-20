@@ -1,0 +1,108 @@
+{
+  "loading": "正在加载模型…",
+  "builtinSection": "内置 AI 模型",
+  "advancedModels": "更多模型",
+  "empty": "未找到模型。请下载一个模型以开始使用内置 AI。",
+  "card": {
+    "ready": "就绪",
+    "selected": "已选择",
+    "download": "下载",
+    "select": "选择",
+    "downloading": "下载中 {{percent}}%"
+  },
+  "badge": {
+    "recommended": "推荐",
+    "balance": "均衡"
+  },
+  "actions": {
+    "cancel": "取消",
+    "cancelTitle": "取消下载",
+    "retry": "重试",
+    "redownload": "重新下载",
+    "delete": "删除",
+    "deleteTitle": "删除模型",
+    "deleteToFreeSpace": "删除模型以释放空间"
+  },
+  "meta": {
+    "sizeContext": "{{size}} MB · {{tokens}} 个 token",
+    "downloadProgress": "{{downloaded}} MB / {{total}} MB",
+    "downloadSpeed": "{{speed}} MB/s",
+    "sizeMb": "{{size}}MB",
+    "sizeGb": "{{size}}GB",
+    "accuracy": "准确度 {{value}}",
+    "speed": "处理速度 {{value}}"
+  },
+  "accuracy": {
+    "High": "高",
+    "Good": "良好",
+    "Decent": "尚可"
+  },
+  "speed": {
+    "Slow": "慢",
+    "Medium": "中等",
+    "Fast": "快",
+    "Very Fast": "极快"
+  },
+  "errors": {
+    "generic": "发生错误",
+    "corrupted": "文件已损坏。请重新下载或删除。",
+    "unknown": "未知错误",
+    "deleteError": "删除出错"
+  },
+  "builtin": {
+    "loadFailed": "无法加载模型",
+    "downloadComplete": "模型 {{model}} 下载成功",
+    "downloadFailed": "无法下载 {{model}}",
+    "downloadCancelled": "已取消下载 {{model}}",
+    "deleted": "已删除模型 {{model}}",
+    "deleteFailed": "无法删除 {{model}}"
+  },
+  "whisper": {
+    "loadFailed": "无法加载模型",
+    "loadFailedTranscription": "无法加载转录模型",
+    "ready": "{{icon}} {{model}} 已就绪！",
+    "readyDescription": "模型已下载，可以使用了",
+    "downloadFailed": "无法下载 {{model}}",
+    "downloadStarted": "正在下载 {{model}}…",
+    "downloadStartedDescription": "这可能需要几分钟",
+    "cancelled": "已取消下载 {{model}}",
+    "cancelFailed": "无法取消下载",
+    "selected": "已选择模型 {{model}}",
+    "deleted": "已删除 {{model}}",
+    "deletedDescription": "已删除模型以释放空间",
+    "deleteFailed": "无法删除 {{model}}",
+    "inUse": "正在使用 {{model}} 进行转录",
+    "displayName": {
+      "largeV3Compressed": "Large V3（压缩版）"
+    }
+  },
+  "tagline": {
+    "sep": " • ",
+    "speed": {
+      "veryFast": "实时",
+      "fast": "快速处理",
+      "medium": "中等速度",
+      "slow": "较慢"
+    },
+    "feature": {
+      "largeV3": "最准确",
+      "largeV3Turbo": "准确且快速",
+      "mediumHigh": "专业质量",
+      "mediumStd": "均衡质量",
+      "small": "良好准确度",
+      "base": "均衡质量",
+      "tiny": "最快"
+    },
+    "quant": {
+      "optimized": "，已优化",
+      "ultraFast": "，超快"
+    }
+  },
+  "perfBadge": {
+    "fullPrecision": "完整精度",
+    "balancePlus": "均衡+",
+    "balance": "均衡",
+    "fast": "快速",
+    "standard": "标准"
+  }
+}

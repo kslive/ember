@@ -1,0 +1,96 @@
+{
+  "autoSave": {
+    "title": "Сохранять аудиозаписи",
+    "description": "Автоматически сохранять аудио при остановке записи"
+  },
+  "saveFolder": {
+    "title": "Папка сохранения",
+    "description": "Файлы {{format}} с отметкой времени: ",
+    "filenameExample": "recording_YYYYMMDD_HHMMSS.{{format}}",
+    "defaultFolder": "Папка по умолчанию",
+    "open": "Открыть"
+  },
+  "disabledAlert": "Запись аудио отключена. Включите «Сохранять аудиозаписи», чтобы автоматически сохранять аудио встреч.",
+  "notification": {
+    "title": "Уведомление о начале записи",
+    "description": "Показывать напоминание сообщить участникам о начале записи"
+  },
+  "devices": {
+    "title": "Аудиоустройства",
+    "description": "Выберите предпочитаемые микрофон и устройство системного звука. Они будут выбраны автоматически при запуске новых записей."
+  },
+  "toasts": {
+    "notificationSaved": "Настройка сохранена",
+    "notificationSaveFailed": "Не удалось сохранить настройку",
+    "defaultDevice": "По умолчанию",
+    "devicesSaved": "Настройки устройств сохранены",
+    "devicesSavedDescription": "Микрофон: {{mic}}, Системный звук: {{system}}",
+    "devicesSaveFailed": "Не удалось сохранить настройки устройств"
+  },
+  "deviceSelection": {
+    "refresh": "Обновить список устройств",
+    "loadError": "Failed to load audio devices. Please check your system audio settings.",
+    "noMicToMonitor": "No microphone devices found to monitor",
+    "monitoringStartFailed": "Failed to start audio level monitoring",
+    "mic": "Микрофон",
+    "micPlaceholder": "Выберите микрофон",
+    "micDefault": "Микрофон по умолчанию",
+    "micNotFound": "Микрофоны не найдены",
+    "micLevels": "Уровни микрофона:",
+    "system": "Системный звук",
+    "systemPlaceholder": "Выберите системный звук",
+    "systemDefault": "Системный звук по умолчанию",
+    "systemNotFound": "Устройства системного звука не найдены",
+    "hint": {
+      "micLabel": "Микрофон:",
+      "micText": "записывает ваш голос и звуки вокруг",
+      "systemLabel": "Системный звук:",
+      "systemText": "записывает звук с компьютера (музыка, звонки и т.д.)"
+    }
+  },
+  "backend": {
+    "label": "Захват системного звука",
+    "tooltipTitle": "Способы захвата звука:",
+    "tooltipHint": "Попробуйте разные способы, чтобы найти лучший для вашей системы.",
+    "loadError": "Не удалось загрузить доступные способы захвата",
+    "changeError": "Не удалось сменить способ захвата. Попробуйте ещё раз.",
+    "enabled": "Включён",
+    "disabled": "Выключен",
+    "noteSystemOnly": "Выбор способа влияет только на захват системного звука",
+    "noteMicDefault": "Микрофон всегда использует способ по умолчанию",
+    "noteNewSessions": "Изменения применяются к новым сессиям записи"
+  },
+  "download": {
+    "finishing": "Завершение…",
+    "downloading": "Скачивание {{model}}",
+    "downloadingShort": "Скачивание…",
+    "cancel": "Отменить",
+    "completed": "Загрузка завершена, загружаем модель…",
+    "sizeGb": "{{value}} ГБ",
+    "sizeMb": "{{value}} МБ",
+    "modelsReady_one": "{{downloaded}} из {{total}} модели готова",
+    "modelsReady_few": "{{downloaded}} из {{total}} моделей готовы",
+    "modelsReady_many": "{{downloaded}} из {{total}} моделей готовы",
+    "modelsReady_other": "{{downloaded}} из {{total}} моделей готовы",
+    "totalSize": "{{size}} всего",
+    "localNote": "Модели работают локально — для транскрипции интернет не нужен"
+  },
+  "summary": {
+    "autoTitle": "Авто-конспект",
+    "autoDescription": "Автоматически создавать конспект после завершения записи",
+    "modelLabel": "Модель для конспектов",
+    "loadFailed": "Не удалось загрузить настройки модели",
+    "saved": "Настройки модели сохранены",
+    "saveFailed": "Не удалось сохранить настройки модели"
+  },
+  "transcript": {
+    "engineLabel": "Движок транскрипции",
+    "enginePlaceholder": "Выберите движок",
+    "localWhisper": "Local Whisper · локально, высокая точность",
+    "modelPlaceholder": "Выберите модель",
+    "apiKeyLabel": "API-ключ",
+    "apiKeyPlaceholder": "Введите ваш API-ключ",
+    "unlock": "Разблокировать для редактирования",
+    "lock": "Заблокировать от изменений"
+  }
+}

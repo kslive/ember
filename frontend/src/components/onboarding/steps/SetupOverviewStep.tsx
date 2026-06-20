@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Info, Mic, Sparkles, ArrowRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import {
@@ -12,6 +13,7 @@ import {
 
 export function SetupOverviewStep() {
   const { goNext } = useOnboarding();
+  const { t } = useTranslation('onboarding');
   const [recommendedModel, setRecommendedModel] = useState<string>('gemma3:1b');
   const [modelSize, setModelSize] = useState<string>('~806 MB');
   const [isMac, setIsMac] = useState(false);
@@ -44,15 +46,15 @@ export function SetupOverviewStep() {
       number: 1,
       type: 'transcription' as const,
       icon: Mic,
-      title: 'Движок распознавания речи',
-      caption: 'Whisper расшифровывает аудио в текст — локально',
+      title: t('setup.transcription.title'),
+      caption: t('setup.transcription.caption'),
     },
     {
       number: 2,
       type: 'summarization' as const,
       icon: Sparkles,
-      title: 'ИИ для конспектов',
-      caption: 'Превращает транскрипт в структурированное саммари',
+      title: t('setup.summarization.title'),
+      caption: t('setup.summarization.caption'),
     },
   ];
 
@@ -62,10 +64,10 @@ export function SetupOverviewStep() {
 
   return (
     <OnboardingContainer
-      title="Подготовка"
-      description="Для работы Ember нужно загрузить ИИ-модели для распознавания речи и создания конспектов."
-      step={2}
-      totalSteps={isMac ? 4 : 3}
+      title={t('setup.title')}
+      description={t('setup.description')}
+      step={3}
+      totalSteps={isMac ? 5 : 4}
     >
       <div className="flex w-full flex-col items-center gap-7">
         {}
@@ -83,7 +85,7 @@ export function SetupOverviewStep() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-fg-faint">
-                      Шаг {step.number}
+                      {t('setup.stepLabel', { number: step.number })}
                     </span>
                     {step.type === 'summarization' && (
                       <TooltipProvider>
@@ -94,7 +96,7 @@ export function SetupOverviewStep() {
                             </button>
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs text-sm">
-                            Также можно выбрать внешних ИИ-провайдеров (OpenAI, Claude, Ollama) в настройках.
+                            {t('setup.summarization.tooltip')}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -116,7 +118,7 @@ export function SetupOverviewStep() {
             style={{ boxShadow: '0 8px 24px rgba(249,115,22,.32)' }}
             className="inline-flex h-[46px] w-full items-center justify-center gap-[9px] rounded-md bg-accent text-[15px] font-medium text-white transition-opacity hover:opacity-90"
           >
-            Начать
+            {t('setup.cta')}
             <ArrowRight className="h-4 w-4" strokeWidth={2} />
           </button>
         </div>

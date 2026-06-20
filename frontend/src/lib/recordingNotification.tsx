@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 import { getPref, setPref } from '@/lib/preferences';
+import i18n from '@/i18n';
 
 export async function showRecordingNotification(): Promise<void> {
   try {
@@ -9,11 +10,11 @@ export async function showRecordingNotification(): Promise<void> {
     if (showNotification) {
       let dontShowAgain = false;
 
-      const toastId = toast.info('Запись началась', {
+      const toastId = toast.info(i18n.t('recording:notification.title'), {
         description: (
           <div className="space-y-3 min-w-[260px]">
             <p className="text-sm text-fg-muted">
-              Предупредите участников, что встреча записывается.
+              {i18n.t('recording:notification.description')}
             </p>
             <label className="flex items-center gap-2 text-xs cursor-pointer text-fg-faint hover:text-fg-muted transition-colors">
               <input
@@ -27,7 +28,7 @@ export async function showRecordingNotification(): Promise<void> {
                 }}
                 className="rounded border-black/20 text-accent focus:ring-accent/40"
               />
-              <span className="select-none">Больше не показывать</span>
+              <span className="select-none">{i18n.t('recording:notification.dontShowAgain')}</span>
             </label>
             <button
               onClick={async () => {
@@ -39,7 +40,7 @@ export async function showRecordingNotification(): Promise<void> {
               }}
               className="w-full px-3 py-1.5 bg-surface text-white text-xs rounded-lg hover:bg-surface transition-colors font-medium"
             >
-              Участники предупреждены
+              {i18n.t('recording:notification.acknowledge')}
             </button>
           </div>
         ),

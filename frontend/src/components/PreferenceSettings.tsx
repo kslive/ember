@@ -2,24 +2,35 @@
 
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
+import { useTranslation } from "react-i18next"
 import { Switch } from "./ui/switch"
-import { FolderOpen, Sun, Moon, Laptop } from "lucide-react"
+import { FolderOpen, Sun, Moon, Laptop, Languages } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { load } from '@tauri-apps/plugin-store'
 import { useConfig, NotificationSettings } from "@/contexts/ConfigContext"
 import { useTheme, Theme } from "@/contexts/ThemeContext"
+import { useLocale } from "@/contexts/LocaleContext"
+import type { Locale } from "@/lib/preferences"
 
-const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: 'light', label: 'Светлая', icon: Sun },
-  { value: 'dark', label: 'Тёмная', icon: Moon },
-  { value: 'auto', label: 'Авто', icon: Laptop },
+const THEME_OPTIONS: { value: Theme; key: 'light' | 'dark' | 'auto'; icon: typeof Sun }[] = [
+  { value: 'light', key: 'light', icon: Sun },
+  { value: 'dark', key: 'dark', icon: Moon },
+  { value: 'auto', key: 'auto', icon: Laptop },
+]
+
+// Native language names — always shown in their own script regardless of UI locale.
+const LANGUAGE_OPTIONS: { value: Locale; label: string }[] = [
+  { value: 'en', label: 'English' },
+  { value: 'zh', label: '中文' },
+  { value: 'ru', label: 'Русский' },
 ]
 
 const PREF_FILE = 'preferences.json'
 const PREF_KEY_MD = 'save_summary_folder'
 
 export function PreferenceSettings() {
+  const { t } = useTranslation('settings')
   const {
     notificationSettings,
     storageLocations,
@@ -28,6 +39,7 @@ export function PreferenceSettings() {
     updateNotificationSettings
   } = useConfig();
   const { theme, setTheme } = useTheme();
+  const { locale, setLocale } = useLocale();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -122,11 +134,11 @@ export function PreferenceSettings() {
   };
 
   if (isLoadingPreferences && !notificationSettings && !storageLocations) {
-    return <div className="max-w-2xl mx-auto p-6">Загрузка настроек...</div>
+    return <div className="max-w-2xl mx-auto p-6">{t('general.loading')}</div>
   }
 
   if (notificationsEnabled === null && !isLoadingPreferences) {
-    return <div className="max-w-2xl mx-auto p-6">Загрузка настроек...</div>
+    return <div className="max-w-2xl mx-auto p-6">{t('general.loading')}</div>
   }
 
   const notificationsEnabledValue = notificationsEnabled ?? false;
@@ -136,8 +148,8 @@ export function PreferenceSettings() {
       <div className="bg-elevated rounded-[14px] border border-line py-5 px-[22px]">
         <div className="flex items-center justify-between gap-5">
           <div>
-            <h3 className="text-[15px] font-semibold text-fg">Тема</h3>
-            <p className="text-[13px] text-fg-muted mt-1">Внешний вид приложения</p>
+            <h3 className="text-[15px] font-semibold text-fg">{t('general.theme.title')}</h3>
+            <p className="text-[13px] text-fg-muted mt-1">{t('general.theme.desc')}</p>
           </div>
           <div className="relative inline-flex items-center gap-[3px] rounded-[11px] bg-surface p-1">
             {THEME_OPTIONS.map((opt) => {
@@ -163,6 +175,43 @@ export function PreferenceSettings() {
                     />
                   )}
                   <Icon className="relative z-10 w-3.5 h-3.5" />
+                  <span className="relative z-10">{t(`general.theme.${opt.key}`)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-elevated rounded-[14px] border border-line py-5 px-[22px]">
+        <div className="flex items-center justify-between gap-5">
+          <div>
+            <h3 className="text-[15px] font-semibold text-fg flex items-center gap-2">
+              <Languages className="w-4 h-4 text-fg-muted" />
+              {t('language.label')}
+            </h3>
+            <p className="text-[13px] text-fg-muted mt-1">{t('language.description')}</p>
+          </div>
+          <div className="relative inline-flex items-center gap-[3px] rounded-[11px] bg-surface p-1">
+            {LANGUAGE_OPTIONS.map((opt) => {
+              const isActive = locale === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setLocale(opt.value)}
+                  aria-pressed={isActive}
+                  className={`relative inline-flex items-center px-[13px] py-[7px] rounded-[8px] text-[13px] transition-colors ${
+                    isActive ? 'text-fg font-medium' : 'text-fg-muted hover:text-fg'
+                  }`}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="locale-segment-indicator"
+                      className="absolute inset-0 rounded-[8px] bg-elevated shadow-sm"
+                      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                    />
+                  )}
                   <span className="relative z-10">{opt.label}</span>
                 </button>
               );
@@ -174,22 +223,20 @@ export function PreferenceSettings() {
       <div className="bg-elevated rounded-[14px] border border-line py-5 px-[22px]">
         <div className="flex items-center justify-between gap-5">
           <div>
-            <h3 className="text-[15px] font-semibold text-fg">Уведомления</h3>
-            <p className="text-[13px] text-fg-muted mt-1">Показывать уведомления о начале и конце записи</p>
+            <h3 className="text-[15px] font-semibold text-fg">{t('general.notifications.title')}</h3>
+            <p className="text-[13px] text-fg-muted mt-1">{t('general.notifications.desc')}</p>
           </div>
           <Switch checked={notificationsEnabledValue} onCheckedChange={setNotificationsEnabled} />
         </div>
       </div>
 
       <div className="bg-elevated rounded-[14px] border border-line py-5 px-[22px]">
-        <h3 className="text-[15px] font-semibold text-fg">Экспорт саммари в Markdown</h3>
-        <p className="text-[13px] text-fg-muted mt-1 mb-4">
-          Папка, куда сохраняются файлы <code className="font-mono text-fg">.md</code> при экспорте саммари встречи.
-        </p>
+        <h3 className="text-[15px] font-semibold text-fg">{t('general.export.title')}</h3>
+        <p className="text-[13px] text-fg-muted mt-1 mb-4">{t('general.export.desc')}</p>
         <div className="flex items-center gap-3">
           <div className="flex-1 min-w-0 h-[42px] flex items-center px-3.5 rounded-[11px] bg-surface border border-line">
             <span className="text-[12.5px] text-fg-muted break-all font-mono truncate">
-              {mdFolder || 'Не выбрана'}
+              {mdFolder || t('general.export.notChosen')}
             </span>
           </div>
           <button
@@ -197,19 +244,19 @@ export function PreferenceSettings() {
             className="shrink-0 inline-flex items-center gap-[7px] px-4 h-[42px] text-[13px] font-medium rounded-[11px] bg-elevated border border-line-strong text-fg hover:bg-fg/[0.04] transition-colors"
           >
             <FolderOpen className="w-3.5 h-3.5" />
-            Выбрать
+            {t('common:select')}
           </button>
         </div>
       </div>
 
       <div className="bg-elevated rounded-[14px] border border-line py-5 px-[22px]">
-        <h3 className="text-[15px] font-semibold text-fg mb-4">Расположение данных</h3>
+        <h3 className="text-[15px] font-semibold text-fg mb-4">{t('general.data.title')}</h3>
         <div className="flex items-end gap-3">
           <div className="flex-1 min-w-0">
-            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint mb-1.5">Записи встреч</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint mb-1.5">{t('general.data.recordings')}</div>
             <div className="h-[42px] flex items-center px-3.5 rounded-[11px] bg-surface border border-line">
               <span className="text-[12.5px] text-fg-muted break-all font-mono truncate">
-                {storageLocations?.recordings || 'Загрузка...'}
+                {storageLocations?.recordings || t('general.data.loadingPath')}
               </span>
             </div>
           </div>
@@ -218,7 +265,7 @@ export function PreferenceSettings() {
             className="shrink-0 inline-flex items-center gap-[7px] px-4 h-[42px] text-[13px] font-medium rounded-[11px] bg-elevated border border-line-strong text-fg hover:bg-fg/[0.04] transition-colors"
           >
             <FolderOpen className="w-3.5 h-3.5" />
-            Открыть
+            {t('common:open')}
           </button>
         </div>
       </div>

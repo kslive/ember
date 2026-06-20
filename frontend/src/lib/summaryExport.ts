@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
+import i18n from '@/i18n';
 
 export function pad2(n: number): string {
   return n.toString().padStart(2, '0');
@@ -52,8 +53,8 @@ export function buildFrontmatter(meeting: any, body: string): string {
     '---',
     `date: ${date}`,
     `time: "${time}"`,
-    `device: "Mac"`,
-    `type: "Встреча"`,
+    `device: "${i18n.t('common:summaryExport.device')}"`,
+    `type: "${i18n.t('common:summaryExport.type')}"`,
     `topic: "${topic.replace(/"/g, '\\"')}"`,
     `participants: []`,
     `tags: [meeting]`,

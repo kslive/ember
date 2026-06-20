@@ -95,10 +95,15 @@ pub fn start<R: Runtime>(app: &AppHandle<R>) {
                     active_secs = active_secs.saturating_add(1);
                     if active_secs >= AUTOSTART_DEBOUNCE_SECS && !AUTO_SESSION.load(Ordering::SeqCst) {
                         let ts = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+                        let prefix = match crate::current_locale(&app).as_str() {
+                            "ru" => "Запись",
+                            "zh" => "录音",
+                            _ => "Recording",
+                        };
                         log::info!("mic_watcher: external mic active {}s → auto-starting recording", active_secs);
                         match crate::audio::recording_commands::start_recording_with_meeting_name(
                             app.clone(),
-                            Some(format!("Запись {}", ts)),
+                            Some(format!("{} {}", prefix, ts)),
                         ).await {
                             Ok(()) => AUTO_SESSION.store(true, Ordering::SeqCst),
                             Err(e) => log::error!("mic_watcher: auto-start failed: {}", e),

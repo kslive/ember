@@ -193,6 +193,9 @@ impl SummaryService {
 
         let app_data_dir = _app.path().app_data_dir().ok();
 
+        // Generate the summary in the current UI language.
+        let locale = crate::current_locale(&_app);
+
         let client = reqwest::Client::new();
         let result = generate_meeting_summary(
             &client,
@@ -210,6 +213,7 @@ impl SummaryService {
             custom_openai_top_p,
             app_data_dir.as_ref(),
             Some(&cancellation_token),
+            &locale,
         )
         .await;
 

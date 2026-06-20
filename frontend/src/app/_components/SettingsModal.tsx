@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { useConfig } from "@/contexts/ConfigContext";
 import { useRecordingState } from "@/contexts/RecordingStateContext";
+import { useTranslation } from "react-i18next";
 
 type modalType = "modelSettings" | "deviceSettings" | "languageSettings" | "modelSelector" | "errorAlert" | "chunkDropWarning";
 
@@ -49,6 +50,7 @@ export function SettingsModals({
   } = useConfig();
 
   const { isRecording } = useRecordingState();
+  const { t } = useTranslation('settings');
 
   return <>
     {}
@@ -240,7 +242,7 @@ export function SettingsModals({
           {}
           <div className="flex justify-between items-center p-6 pb-4 border-b border-line">
             <h3 className="text-lg font-semibold text-fg">
-              {messages.modelSelector ? 'Нужно настроить распознавание речи' : 'Настройки модели транскрипции'}
+              {messages.modelSelector ? t('modal.transcriptionSetupTitle') : t('modal.transcriptionSettingsTitle')}
             </h3>
             <button
               onClick={() => onClose('modelSelector')}
@@ -275,8 +277,8 @@ export function SettingsModals({
                 <div className="w-11 h-6 bg-surface peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-canvas after:border-line after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
               </label>
               <div>
-                <p className="text-sm font-medium text-fg-muted">Индикаторы уверенности</p>
-                <p className="text-xs text-fg-muted">Цветные точки показывают уверенность транскрипции</p>
+                <p className="text-sm font-medium text-fg-muted">{t('modal.confidenceIndicators')}</p>
+                <p className="text-xs text-fg-muted">{t('modal.confidenceIndicatorsDesc')}</p>
               </div>
             </div>
 
@@ -284,7 +286,7 @@ export function SettingsModals({
               onClick={() => onClose('modelSelector')}
               className="px-4 py-2 text-sm font-medium text-fg-muted bg-surface rounded-md hover:bg-surface focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-line-strong"
             >
-              {messages.modelSelector ? 'Отмена' : 'Готово'}
+              {messages.modelSelector ? t('modal.cancel') : t('modal.done')}
             </button>
           </div>
         </div>

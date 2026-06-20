@@ -9,7 +9,9 @@ import { usePermissionCheck } from '@/hooks/usePermissionCheck';
 import { ModalType } from '@/hooks/useModalState';
 import { useIsLinux } from '@/hooks/usePlatform';
 import { TranscriptLabel } from '@/components/transcript/TranscriptLabel';
+import { LANGUAGES } from '@/components/LanguageSelection';
 import { useMemo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface TranscriptPanelProps {
   isProcessingStop: boolean;
@@ -26,8 +28,9 @@ export function TranscriptPanel({
   recordingControls,
   recordingPauseControl,
 }: TranscriptPanelProps) {
+  const { t } = useTranslation('recording');
   const { transcripts, transcriptContainerRef, copyTranscript } = useTranscripts();
-  const { transcriptModelConfig } = useConfig();
+  const { transcriptModelConfig, selectedLanguage } = useConfig();
   const { isRecording, isPaused, isFinalizing } = useRecordingState();
   const { checkPermissions, isChecking, hasSystemAudio, hasMicrophone } = usePermissionCheck();
   const isLinux = useIsLinux();
@@ -48,10 +51,10 @@ export function TranscriptPanel({
       type="button"
       onClick={() => showModal('languageSettings')}
       className="titlebar-no-drag inline-flex items-center gap-[7px] px-[14px] h-[34px] rounded-[9px] text-[13px] text-fg-muted hover:bg-surface border border-line transition-colors"
-      title="Язык"
+      title={t('transcriptionLanguageTooltip')}
     >
       <GlobeIcon size={14} />
-      <span>Русский</span>
+      <span>{LANGUAGES.find(l => l.code === selectedLanguage)?.name ?? selectedLanguage}</span>
     </button>
   ) : null;
 
@@ -61,7 +64,7 @@ export function TranscriptPanel({
         {}
         <div className="flex-1 flex flex-col items-center justify-center gap-[14px]">
           <div className="w-[18px] h-[18px] border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-          <span className="text-[15px] text-fg-muted">Завершаем расшифровку…</span>
+          <span className="text-[15px] text-fg-muted">{t('finalizing')}</span>
         </div>
       </main>
     );
@@ -84,7 +87,7 @@ export function TranscriptPanel({
           {}
           <div className="flex-1 min-h-0 flex flex-col px-[40px] py-[28px]">
             <TranscriptLabel className="mb-[22px] select-none">
-              Транскрипт · в реальном времени
+              {t('transcript.live')}
             </TranscriptLabel>
             <div className="flex-1 min-h-0">
               <VirtualizedTranscriptView
@@ -127,16 +130,16 @@ export function TranscriptPanel({
             <div className="flex-1 min-h-0 flex flex-col px-[40px] py-[28px]">
               <div className="flex items-center justify-between mb-[22px]">
                 <TranscriptLabel className="select-none">
-                  Транскрипт
+                  {t('transcript.title')}
                 </TranscriptLabel>
                 {transcripts?.length > 0 && (
                   <button
                     type="button"
                     onClick={copyTranscript}
                     className="titlebar-no-drag inline-flex items-center gap-[7px] px-3.5 h-[34px] rounded-[9px] text-[13px] text-fg-muted hover:bg-surface border border-line transition-colors"
-                    title="Скопировать"
+                    title={t('transcript.copyTitle')}
                   >
-                    Копировать
+                    {t('transcript.copy')}
                   </button>
                 )}
               </div>
@@ -155,10 +158,10 @@ export function TranscriptPanel({
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-[14px] pb-[40px]">
               <h1 className="text-[38px] font-light tracking-[-0.02em] text-fg">
-                Готов к записи
+                {t('ready')}
               </h1>
               <p className="text-[15px] text-fg-muted">
-                Начните запись — транскрипт появится здесь в реальном времени
+                {t('emptyHint')}
               </p>
               {}
               {recordingControls}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import Analytics from '@/lib/analytics';
 import { toast } from 'sonner';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -8,7 +9,7 @@ export interface Language {
   name: string;
 }
 
-const LANGUAGES: Language[] = [
+export const LANGUAGES: Language[] = [
   { code: 'auto', name: 'Auto Detect (Original Language)' },
   { code: 'auto-translate', name: 'Auto Detect (Translate to English)' },
   { code: 'en', name: 'English' },
@@ -126,6 +127,7 @@ export function LanguageSelection({
   provider = 'localWhisper'
 }: LanguageSelectionProps) {
   const [saving, setSaving] = useState(false);
+  const { t } = useTranslation('settings');
   const { setSelectedLanguage } = useConfig();
 
   const isParakeet = provider === 'parakeet';
@@ -149,12 +151,12 @@ export function LanguageSelection({
       });
 
       const languageName = selectedLang?.name || languageCode;
-      toast.success("Настройка языка сохранена", {
-        description: `Язык транскрипции: ${languageName}`
+      toast.success(t('transcription.saved'), {
+        description: t('transcription.savedDescription', { language: languageName })
       });
     } catch (error) {
       console.error('Failed to save language preference:', error);
-      toast.error("Не удалось сохранить настройку языка", {
+      toast.error(t('transcription.saveFailed'), {
         description: error instanceof Error ? error.message : String(error)
       });
     } finally {
@@ -168,7 +170,7 @@ export function LanguageSelection({
 
   return (
     <div className="space-y-3">
-      <h4 className="font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint">Язык транскрипции</h4>
+      <h4 className="font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint">{t('transcription.language')}</h4>
 
       <div className="space-y-2">
         <select
@@ -191,34 +193,39 @@ export function LanguageSelection({
             className="flex flex-col gap-1 rounded-[11px] px-3.5 py-3 text-warn"
             style={{ background: 'rgba(180,83,9,.1)', border: '1px solid rgba(180,83,9,.25)' }}
           >
-            <p className="font-medium text-[13px]">Поддержка языков в Parakeet</p>
-            <p className="text-[12px] leading-relaxed">Parakeet сейчас поддерживает только автоматическое определение языка. Выбор языка вручную недоступен. Используйте Whisper, если нужно указать конкретный язык.</p>
+            <p className="font-medium text-[13px]">{t('transcription.parakeet.title')}</p>
+            <p className="text-[12px] leading-relaxed">{t('transcription.parakeet.desc')}</p>
           </div>
         )}
 
         {}
         <div className="text-[12px] space-y-2 pt-1">
           <p className="text-fg-muted">
-            <strong className="font-medium text-fg">Текущий:</strong> {selectedLanguageName}
+            <strong className="font-medium text-fg">{t('transcription.current')}</strong> {selectedLanguageName}
           </p>
           {selectedLanguage === 'auto' && (
             <div
               className="flex flex-col gap-1 rounded-[11px] px-3.5 py-3 text-warn"
               style={{ background: 'rgba(180,83,9,.1)', border: '1px solid rgba(180,83,9,.25)' }}
             >
-              <p className="font-medium text-[13px]">Автоопределение может давать неверные результаты</p>
-              <p className="leading-relaxed">Для наилучшей точности выберите конкретный язык (например, English, Spanish и т.д.)</p>
+              <p className="font-medium text-[13px]">{t('transcription.autoWarning.title')}</p>
+              <p className="leading-relaxed">{t('transcription.autoWarning.desc')}</p>
             </div>
           )}
           {selectedLanguage === 'auto-translate' && (
             <div className="flex flex-col gap-1 bg-accent-weak border border-accent/40 rounded-[11px] px-3.5 py-3 text-accent-text">
-              <p className="font-medium text-[13px]">Режим перевода активен</p>
-              <p className="leading-relaxed">Всё аудио будет автоматически переведено на английский. Подходит для многоязычных встреч, когда нужен результат на английском.</p>
+              <p className="font-medium text-[13px]">{t('transcription.translate.title')}</p>
+              <p className="leading-relaxed">{t('transcription.translate.desc')}</p>
             </div>
           )}
           {selectedLanguage !== 'auto' && selectedLanguage !== 'auto-translate' && (
             <p className="text-fg-muted">
-              Транскрипция будет оптимизирована для <strong className="font-medium text-fg">{selectedLanguageName}</strong>
+              <Trans
+                t={t}
+                i18nKey="transcription.optimizedFor"
+                values={{ language: selectedLanguageName }}
+                components={{ strong: <strong className="font-medium text-fg" /> }}
+              />
             </p>
           )}
         </div>

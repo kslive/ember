@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { ModelConfig, ModelSettingsModal } from '@/components/ModelSettingsModal';
@@ -12,6 +13,7 @@ interface SummaryModelSettingsProps {
 }
 
 export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsProps) {
+  const { t } = useTranslation('recordingsettings');
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
     provider: 'ollama',
     model: 'llama3.2:latest',
@@ -57,9 +59,9 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
       }
     } catch (error) {
       console.error('Failed to fetch model config:', error);
-      toast.error('Не удалось загрузить настройки модели');
+      toast.error(t('summary.loadFailed'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchModelConfig();
@@ -105,10 +107,10 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
       const { emit } = await import('@tauri-apps/api/event');
       await emit('model-config-updated', config);
 
-      toast.success('Настройки модели сохранены');
+      toast.success(t('summary.saved'));
     } catch (error) {
       console.error('Error saving model config:', error);
-      toast.error('Не удалось сохранить настройки модели');
+      toast.error(t('summary.saveFailed'));
     }
   };
 
@@ -117,8 +119,8 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
       <div className="bg-elevated rounded-[14px] border border-line py-[18px] px-[22px]">
         <div className="flex items-center justify-between gap-5">
           <div>
-            <h3 className="text-[15px] font-semibold text-fg">Авто-конспект</h3>
-            <p className="text-[13px] text-fg-muted mt-1">Автоматически создавать конспект после завершения записи</p>
+            <h3 className="text-[15px] font-semibold text-fg">{t('summary.autoTitle')}</h3>
+            <p className="text-[13px] text-fg-muted mt-1">{t('summary.autoDescription')}</p>
           </div>
           <Switch checked={isAutoSummary} onCheckedChange={toggleIsAutoSummary} />
         </div>
@@ -126,7 +128,7 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
 
       <div>
         <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint mb-[7px]">
-          Модель для конспектов
+          {t('summary.modelLabel')}
         </div>
 
         <ModelSettingsModal

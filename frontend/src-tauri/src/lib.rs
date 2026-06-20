@@ -51,6 +51,25 @@ pub mod whisper_engine;
 
 use audio::{list_audio_devices, AudioDevice, trigger_audio_permission};
 
+/// Reads the UI locale stored by the frontend in the `preferences.json` Tauri
+/// store under the `locale` key. Returns one of "en" | "ru" | "zh", defaulting
+/// to "en" when the store, key or value is missing/invalid.
+pub fn current_locale<R: Runtime>(app: &AppHandle<R>) -> String {
+    use tauri_plugin_store::StoreExt;
+
+    let locale = app
+        .store("preferences.json")
+        .ok()
+        .and_then(|store| store.get("locale"))
+        .and_then(|value| value.as_str().map(|s| s.to_string()));
+
+    match locale.as_deref() {
+        Some("ru") => "ru".to_string(),
+        Some("zh") => "zh".to_string(),
+        _ => "en".to_string(),
+    }
+}
+
 #[tauri::command]
 async fn save_summary_md(folder: String, file_name: String, content: String) -> Result<String, String> {
     use std::path::PathBuf;
@@ -64,10 +83,16 @@ async fn save_summary_md(folder: String, file_name: String, content: String) -> 
 }
 
 #[tauri::command]
-fn open_in_obsidian(file_path: String) -> Result<(), String> {
+fn open_in_obsidian<R: Runtime>(app: AppHandle<R>, file_path: String) -> Result<(), String> {
     use std::path::Path;
+    let locale = current_locale(&app);
     if !Path::new(&file_path).exists() {
-        return Err(format!("Файл саммари не найден: {}", file_path));
+        let msg = match locale.as_str() {
+            "ru" => format!("Файл саммари не найден: {}", file_path),
+            "zh" => format!("未找到摘要文件：{}", file_path),
+            _ => format!("Summary file not found: {}", file_path),
+        };
+        return Err(msg);
     }
 
     let encoded: String = file_path
@@ -86,19 +111,28 @@ fn open_in_obsidian(file_path: String) -> Result<(), String> {
         std::process::Command::new("open")
             .arg(&uri)
             .spawn()
-            .map_err(|e| format!("Не удалось открыть Obsidian: {}", e))?;
+            .map_err(|e| match locale.as_str() {
+                "ru" => format!("Не удалось открыть Obsidian: {}", e),
+                "zh" => format!("无法打开 Obsidian：{}", e),
+                _ => format!("Failed to open Obsidian: {}", e),
+            })?;
         Ok(())
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = uri;
-        Err("Открытие в Obsidian поддерживается только на macOS".to_string())
+        let msg = match locale.as_str() {
+            "ru" => "Открытие в Obsidian поддерживается только на macOS".to_string(),
+            "zh" => "仅 macOS 支持在 Obsidian 中打开".to_string(),
+            _ => "Opening in Obsidian is only supported on macOS".to_string(),
+        };
+        Err(msg)
     }
 }
 use log::{error as log_error, info as log_info};
 use notifications::commands::NotificationManagerState;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Listener, Manager, Runtime};
 use tokio::sync::RwLock;
 
 static RECORDING_FLAG: AtomicBool = AtomicBool::new(false);
@@ -393,6 +427,13 @@ pub fn run() {
             if let Err(e) = tray::create_tray(_app.handle()) {
                 log::error!("Failed to create system tray: {}", e);
             }
+
+            // Re-localize the tray menu when the user switches UI language.
+            let app_for_locale = _app.handle().clone();
+            _app.handle().listen("locale-changed", move |_event| {
+                log::info!("locale-changed received — rebuilding tray menu");
+                tray::update_tray_menu(&app_for_locale);
+            });
 
             let app_for_watcher = _app.handle().clone();
             tauri::async_runtime::spawn(async move {

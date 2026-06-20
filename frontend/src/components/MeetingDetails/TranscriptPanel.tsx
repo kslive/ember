@@ -4,6 +4,7 @@ import { Transcript, TranscriptSegmentData } from '@/types';
 import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptView';
 import { TranscriptLabel } from '@/components/transcript/TranscriptLabel';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface TranscriptPanelProps {
   transcripts: Transcript[];
@@ -39,6 +40,7 @@ export function TranscriptPanel({
   loadedCount,
   onLoadMore,
 }: TranscriptPanelProps) {
+  const { t } = useTranslation('meeting');
   const convertedSegments = useMemo(() => {
     if (usePagination && segments) return segments;
     return transcripts.map(t => ({
@@ -54,7 +56,7 @@ export function TranscriptPanel({
     <div className="hidden md:flex md:flex-[1.15] min-w-0 border-r border-line bg-canvas flex-col px-[30px] pt-6">
       {}
       <TranscriptLabel className="mb-[18px]">
-        Транскрипт
+        {t('transcript.label')}
       </TranscriptLabel>
 
       <div className="flex-1 min-h-0 overflow-hidden">

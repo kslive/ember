@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Input } from './ui/input';
@@ -20,6 +21,7 @@ export interface TranscriptSettingsProps {
 }
 
 export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelConfig, onModelSelect }: TranscriptSettingsProps) {
+    const { t } = useTranslation('recordingsettings');
     const [apiKey, setApiKey] = useState<string | null>(transcriptModelConfig.apiKey || null);
     const [showApiKey, setShowApiKey] = useState<boolean>(false);
     const [isApiKeyLocked, setIsApiKeyLocked] = useState<boolean>(true);
@@ -92,7 +94,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                 <div className="space-y-4 pb-6">
                     <div>
                         <Label className="block font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint mb-2">
-                            Движок транскрипции
+                            {t('transcript.engineLabel')}
                         </Label>
                         <div className="flex gap-2">
                             <Select
@@ -106,10 +108,10 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 }}
                             >
                                 <SelectTrigger className='h-[44px] px-[15px] rounded-[11px] bg-elevated border-line text-[14px] focus:ring-1 focus:ring-accent focus:border-accent'>
-                                    <SelectValue placeholder="Выберите движок" />
+                                    <SelectValue placeholder={t('transcript.enginePlaceholder')} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="localWhisper">Local Whisper · локально, высокая точность</SelectItem>
+                                    <SelectItem value="localWhisper">{t('transcript.localWhisper')}</SelectItem>
                                 </SelectContent>
                             </Select>
 
@@ -122,7 +124,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     }}
                                 >
                                     <SelectTrigger className='h-[44px] px-[15px] rounded-[11px] bg-elevated border-line text-[14px] focus:ring-1 focus:ring-accent focus:border-accent'>
-                                        <SelectValue placeholder="Выберите модель" />
+                                        <SelectValue placeholder={t('transcript.modelPlaceholder')} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {modelOptions[uiProvider].map((model) => (
@@ -148,7 +150,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                     {requiresApiKey && (
                         <div>
                             <Label className="block font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint mb-2">
-                                API-ключ
+                                {t('transcript.apiKeyLabel')}
                             </Label>
                             <div className="relative">
                                 <Input
@@ -159,7 +161,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     onChange={(e) => setApiKey(e.target.value)}
                                     disabled={isApiKeyLocked}
                                     onClick={handleInputClick}
-                                    placeholder="Введите ваш API-ключ"
+                                    placeholder={t('transcript.apiKeyPlaceholder')}
                                 />
                                 {isApiKeyLocked && (
                                     <div
@@ -175,7 +177,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                         onClick={() => setIsApiKeyLocked(!isApiKeyLocked)}
                                         className={`transition-colors duration-200 ${isLockButtonVibrating ? 'animate-vibrate text-rec' : ''
                                             }`}
-                                        title={isApiKeyLocked ? "Разблокировать для редактирования" : "Заблокировать от изменений"}
+                                        title={isApiKeyLocked ? t('transcript.unlock') : t('transcript.lock')}
                                     >
                                         {isApiKeyLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
                                     </Button>

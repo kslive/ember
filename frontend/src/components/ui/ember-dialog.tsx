@@ -3,6 +3,7 @@
 import * as React from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { Trash2, AlertTriangle, Info, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
 export type EmberDialogTone = 'danger' | 'warning' | 'info'
@@ -49,14 +50,17 @@ export function EmberDialog({
   title,
   message,
   tone = 'danger',
-  confirmLabel = 'Удалить',
-  cancelLabel = 'Отмена',
+  confirmLabel,
+  cancelLabel,
   showIcon = true,
   confirmIcon,
   busy = false,
 }: EmberDialogProps) {
+  const { t: translate } = useTranslation('common')
   const t = TONES[tone]
   const showConfirmIcon = confirmIcon ?? tone === 'danger'
+  const resolvedConfirmLabel = confirmLabel ?? translate('delete')
+  const resolvedCancelLabel = cancelLabel ?? translate('cancel')
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -95,7 +99,7 @@ export function EmberDialog({
                 )}
               </div>
               <DialogPrimitive.Close
-                aria-label="Закрыть"
+                aria-label={translate('close')}
                 className="-mr-0.5 -mt-0.5 flex-none p-0.5 text-fg-faint transition-colors hover:text-fg"
               >
                 <X className="h-4 w-4" strokeWidth={2} />
@@ -108,7 +112,7 @@ export function EmberDialog({
               onClick={() => onOpenChange(false)}
               className="h-[38px] rounded-[11px] border border-line-strong bg-transparent px-4 text-[13.5px] font-medium text-fg transition-colors hover:bg-fg/[0.05]"
             >
-              {cancelLabel}
+              {resolvedCancelLabel}
             </button>
             <button
               type="button"
@@ -120,7 +124,7 @@ export function EmberDialog({
               )}
             >
               {showConfirmIcon && <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />}
-              {confirmLabel}
+              {resolvedConfirmLabel}
             </button>
           </div>
         </DialogPrimitive.Content>

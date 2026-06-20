@@ -1,7 +1,49 @@
 use crate::summary::templates;
+use crate::summary::templates::Template;
 use serde::{Deserialize, Serialize};
 use tauri::Runtime;
 use tracing::{info, warn};
+
+/// Translates the known strings of the built-in `standard_meeting` template into
+/// the UI locale. The template is authored in Russian (the default), so for
+/// `ru` (or any unknown string) it is returned unchanged. Strings that are not
+/// part of the built-in template (e.g. user-authored custom templates) are left
+/// as-is.
+fn localize_template(mut template: Template, locale: &str) -> Template {
+    let translate = |ru: &str| -> Option<&'static str> {
+        match (locale, ru) {
+            ("en", "Стандартные заметки встречи") => Some("Standard meeting notes"),
+            ("en", "Стандартный шаблон для обычных встреч с акцентом на ключевые итоги и действия.") =>
+                Some("Standard template for regular meetings, focused on key outcomes and action items."),
+            ("en", "Краткое содержание") => Some("Summary"),
+            ("en", "Ключевые решения") => Some("Key decisions"),
+            ("en", "Задачи") => Some("Action items"),
+            ("en", "Основные моменты обсуждения") => Some("Discussion highlights"),
+            ("zh", "Стандартные заметки встречи") => Some("标准会议纪要"),
+            ("zh", "Стандартный шаблон для обычных встреч с акцентом на ключевые итоги и действия.") =>
+                Some("适用于常规会议的标准模板，侧重关键结论和行动事项。"),
+            ("zh", "Краткое содержание") => Some("摘要"),
+            ("zh", "Ключевые решения") => Some("关键决定"),
+            ("zh", "Задачи") => Some("任务"),
+            ("zh", "Основные моменты обсуждения") => Some("讨论要点"),
+            _ => None,
+        }
+    };
+
+    if let Some(name) = translate(&template.name) {
+        template.name = name.to_string();
+    }
+    if let Some(description) = translate(&template.description) {
+        template.description = description.to_string();
+    }
+    for section in &mut template.sections {
+        if let Some(title) = translate(&section.title) {
+            section.title = title.to_string();
+        }
+    }
+
+    template
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TemplateInfo {
@@ -31,14 +73,25 @@ pub async fn api_list_templates<R: Runtime>(
 ) -> Result<Vec<TemplateInfo>, String> {
     info!("api_list_templates called");
 
+    let locale = crate::current_locale(&_app);
     let templates = templates::list_templates();
 
     let template_infos: Vec<TemplateInfo> = templates
         .into_iter()
-        .map(|(id, name, description)| TemplateInfo {
-            id,
-            name,
-            description,
+        .map(|(id, name, description)| {
+            let localized = localize_template(
+                Template {
+                    name,
+                    description,
+                    sections: Vec::new(),
+                },
+                &locale,
+            );
+            TemplateInfo {
+                id,
+                name: localized.name,
+                description: localized.description,
+            }
         })
         .collect();
 
@@ -54,7 +107,8 @@ pub async fn api_get_template_details<R: Runtime>(
 ) -> Result<TemplateDetails, String> {
     info!("api_get_template_details called for template_id: {}", template_id);
 
-    let template = templates::get_template(&template_id)?;
+    let locale = crate::current_locale(&_app);
+    let template = localize_template(templates::get_template(&template_id)?, &locale);
 
     let section_titles: Vec<String> = template
         .sections

@@ -1,26 +1,28 @@
 import React from 'react';
 import { Lock, Zap, FileText, ArrowRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useOnboarding } from '@/contexts/OnboardingContext';
 import { StepDots } from '../shared';
 
 export function WelcomeStep() {
   const { goNext } = useOnboarding();
+  const { t } = useTranslation('onboarding');
 
   const features = [
     {
       icon: Lock,
-      title: 'Локально и приватно',
-      caption: 'Аудио и текст не покидают компьютер',
+      title: t('welcome.features.local.title'),
+      caption: t('welcome.features.local.caption'),
     },
     {
       icon: Zap,
-      title: 'Работает без интернета',
-      caption: 'Модели запускаются прямо на устройстве',
+      title: t('welcome.features.offline.title'),
+      caption: t('welcome.features.offline.caption'),
     },
     {
       icon: FileText,
-      title: 'Экспорт в Markdown',
-      caption: 'Саммари сразу готовы для Obsidian',
+      title: t('welcome.features.export.title'),
+      caption: t('welcome.features.export.caption'),
     },
   ];
 
@@ -53,10 +55,10 @@ export function WelcomeStep() {
         </div>
 
         <h1 className="m-0 text-center text-[32px] font-semibold tracking-[-0.025em] text-fg animate-fade-in-up">
-          Добро пожаловать в Ember
+          {t('welcome.title')}
         </h1>
         <p className="m-0 mb-3.5 text-center text-[15px] leading-[1.6] text-fg-muted">
-          Транскрипция и саммари встреч — полностью на вашем устройстве. Настроим за минуту.
+          {t('welcome.description')}
         </p>
 
         {}
@@ -84,7 +86,7 @@ export function WelcomeStep() {
           style={{ boxShadow: '0 8px 24px rgba(249,115,22,.32)' }}
           className="inline-flex h-[46px] w-full items-center justify-center gap-[9px] rounded-md bg-accent text-[15px] font-medium text-white transition-opacity hover:opacity-90"
         >
-          Начать настройку
+          {t('welcome.cta')}
           <ArrowRight className="h-4 w-4" strokeWidth={2} />
         </button>
 

@@ -7,6 +7,7 @@ import { configService, ModelConfig } from '@/services/configService';
 import { invoke } from '@tauri-apps/api/core';
 import Analytics from '@/lib/analytics';
 import { BetaFeatures, BetaFeatureKey, loadBetaFeatures, saveBetaFeatures } from '@/types/betaFeatures';
+import { useLocale } from '@/contexts/LocaleContext';
 
 export interface OllamaModel {
   name: string;
@@ -118,6 +119,8 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     micDevice: null,
     systemDevice: null
   });
+
+  const { locale } = useLocale();
 
   const [selectedLanguage, setSelectedLanguage] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -425,11 +428,24 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     setSelectedLanguage(lang);
     if (typeof window !== 'undefined') {
       localStorage.setItem('primaryLanguage', lang);
+      // User picked the transcription language explicitly → pin it so it no
+      // longer auto-follows the interface language.
+      localStorage.setItem('transcriptionLanguageManual', 'true');
     }
     invoke('set_language_preference', { language: lang }).catch(err =>
       console.error('Failed to sync language preference to Rust:', err)
     );
   }, []);
+
+  // Default: keep transcription language matched to the UI language — until the
+  // user overrides it manually (handleSetSelectedLanguage sets the manual flag).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('transcriptionLanguageManual') === 'true') return;
+    setSelectedLanguage(locale);
+    localStorage.setItem('primaryLanguage', locale);
+    invoke('set_language_preference', { language: locale }).catch(() => {});
+  }, [locale]);
 
   const value: ConfigContextType = useMemo(() => ({
     modelConfig,

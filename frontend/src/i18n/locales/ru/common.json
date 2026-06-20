@@ -1,0 +1,28 @@
+{
+  "cancel": "Отмена",
+  "save": "Сохранить",
+  "delete": "Удалить",
+  "back": "Назад",
+  "done": "Готово",
+  "continue": "Продолжить",
+  "open": "Открыть",
+  "select": "Выбрать",
+  "close": "Закрыть",
+  "editableTitle": {
+    "rename": "Переименовать встречу",
+    "delete": "Удалить"
+  },
+  "summaryExport": {
+    "device": "Mac",
+    "type": "Встреча"
+  },
+  "languages": {
+    "en": "English",
+    "zh": "中文",
+    "ru": "Русский"
+  },
+  "onboardingRequired": {
+    "title": "Сначала завершите настройку",
+    "description": "Сначала пройдите онбординг, потом сможете записывать."
+  }
+}

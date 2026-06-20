@@ -1,0 +1,79 @@
+{
+  "title": "模型设置",
+  "summaryModelLabel": "摘要模型",
+  "selectProvider": "选择提供方",
+  "selectModel": "选择模型…",
+  "searchModels": "搜索模型…",
+  "loadingModels": "正在加载模型…",
+  "noModelsFound": "未找到模型。",
+  "provider": {
+    "builtinAi": "内置本地模型（无需 API）",
+    "ollama": "Ollama（本地）",
+    "customOpenai": "自定义 OpenAI 兼容服务器（本地）"
+  },
+  "customOpenai": {
+    "endpointLabel": "地址（URL）*",
+    "endpointPlaceholder": "http://localhost:8000/v1",
+    "endpointHelp": "OpenAI 兼容 API 的基础 URL",
+    "modelLabel": "模型名称 *",
+    "modelPlaceholder": "gpt-4、llama-3-70b 等",
+    "modelHelp": "请求所用的模型标识符",
+    "apiKeyLabel": "API 密钥（可选）",
+    "apiKeyPlaceholder": "如不需要可留空",
+    "advanced": "高级",
+    "maxTokensLabel": "最大令牌数",
+    "maxTokensPlaceholder": "例如 4096",
+    "temperatureLabel": "温度（0.0–2.0）",
+    "temperaturePlaceholder": "例如 0.7",
+    "topPLabel": "Top P（0.0–1.0）",
+    "topPPlaceholder": "例如 0.9",
+    "testing": "正在测试连接…",
+    "testConnection": "测试连接",
+    "specifyUrlAndModel": "请先填写地址（URL）和模型名称",
+    "connectionSuccess": "连接成功！",
+    "saveFailed": "保存 OpenAI 兼容服务器设置失败"
+  },
+  "apiKey": {
+    "label": "API 密钥",
+    "placeholder": "请输入您的 API 密钥",
+    "unlock": "解锁以编辑",
+    "lock": "锁定以防修改"
+  },
+  "ollama": {
+    "customEndpointLabel": "自定义地址（可选）",
+    "customEndpointHelp": "留空或填写您自己的地址（例如 http://x.yy.zz:11434）",
+    "endpointPlaceholder": "http://localhost:11434",
+    "loading": "正在加载…",
+    "loadModelList": "加载模型列表",
+    "endpointChangedWarning": "地址已更改。保存前请点击“加载模型列表”，从新地址加载模型。",
+    "availableModels": "可用的 Ollama 模型",
+    "inUse": "正在使用：",
+    "loadingModels": "正在加载模型…",
+    "notInstalledAlert": "Ollama 未安装或未运行。请下载并安装 Ollama 以使用本地模型。",
+    "downloadOllama": "下载 Ollama",
+    "afterInstall": "安装 Ollama 后，请重启应用并点击“加载模型列表”以继续。",
+    "endpointChangedAlert": "地址已更改。点击“加载模型列表”，从新地址加载模型。",
+    "noModelsAlert": "未找到模型。请下载推荐模型，或点击“加载模型列表”以加载可用的 Ollama 模型。",
+    "downloading": "正在下载 {{model}}…",
+    "downloadRecommended": "下载 gemma3:1b（推荐，约 800MB）",
+    "downloadingTitle": "正在下载 {{model}}",
+    "searchNoResults": "未找到与“{{query}}”匹配的模型。请尝试更改搜索内容。",
+    "modelMeta": "大小 {{size}}",
+    "invalidEndpoint": "Ollama 地址无效。必须以 http:// 或 https:// 开头",
+    "loadModelsFailed": "加载 Ollama 模型失败",
+    "alreadyDownloading": "{{model}} 已在下载中",
+    "downloadProgress": "进度：{{progress}}%",
+    "notInstalledToastTitle": "Ollama 未安装",
+    "notInstalledToastDesc": "下载模型前请先下载并安装 Ollama。",
+    "download": "下载",
+    "modelDeleted": "模型 {{model}} 已删除",
+    "deleteFailed": "删除模型失败"
+  },
+  "openrouter": {
+    "loadFailed": "加载 OpenRouter 模型失败"
+  },
+  "builtinAi": {
+    "loadFailed": "加载内置模型失败"
+  },
+  "save": "保存"
+}

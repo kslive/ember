@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   ModelInfo,
   ModelStatus,
@@ -28,6 +29,7 @@ export function ModelManager({
   className = '',
   autoSave = false
 }: ModelManagerProps) {
+  const { t } = useTranslation('models');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,9 +101,9 @@ export function ModelManager({
         setInitialized(true);
       } catch (err) {
         console.error('Failed to initialize Whisper:', err);
-        setError(err instanceof Error ? err.message : 'Не удалось загрузить модели');
-        toast.error('Не удалось загрузить модели для транскрипции', {
-          description: err instanceof Error ? err.message : 'Неизвестная ошибка',
+        setError(err instanceof Error ? err.message : t('whisper.loadFailed'));
+        toast.error(t('whisper.loadFailedTranscription'), {
+          description: err instanceof Error ? err.message : t('errors.unknown'),
           duration: 5000
         });
       } finally {
@@ -169,8 +171,8 @@ export function ModelManager({
 
           progressThrottleRef.current.delete(modelName);
 
-          toast.success(`${getModelIcon(model?.accuracy || 'Good')} ${displayName} готова!`, {
-            description: 'Модель скачана и готова к использованию',
+          toast.success(t('whisper.ready', { icon: getModelIcon(model?.accuracy || 'Good'), model: displayName }), {
+            description: t('whisper.readyDescription'),
             duration: 4000
           });
 
@@ -205,11 +207,11 @@ export function ModelManager({
 
           progressThrottleRef.current.delete(modelName);
 
-          toast.error(`Не удалось скачать ${displayName}`, {
+          toast.error(t('whisper.downloadFailed', { model: displayName }), {
             description: error,
             duration: 6000,
             action: {
-              label: 'Повторить',
+              label: t('actions.retry'),
               onClick: () => downloadModel(modelName)
             }
           });
@@ -261,13 +263,13 @@ export function ModelManager({
 
       progressThrottleRef.current.delete(modelName);
 
-      toast.info(`Загрузка ${displayName} отменена`, {
+      toast.info(t('whisper.cancelled', { model: displayName }), {
         duration: 3000
       });
     } catch (err) {
       console.error('Failed to cancel download:', err);
-      toast.error('Не удалось отменить загрузку', {
-        description: err instanceof Error ? err.message : 'Неизвестная ошибка',
+      toast.error(t('whisper.cancelFailed'), {
+        description: err instanceof Error ? err.message : t('errors.unknown'),
         duration: 4000
       });
     }
@@ -289,8 +291,8 @@ export function ModelManager({
         )
       );
 
-      toast.info(`Скачивание ${displayName}...`, {
-        description: 'Это может занять несколько минут',
+      toast.info(t('whisper.downloadStarted', { model: displayName }), {
+        description: t('whisper.downloadStartedDescription'),
         duration: 5000
       });
 
@@ -324,7 +326,7 @@ export function ModelManager({
     }
 
     const displayName = getDisplayName(modelName);
-    toast.success(`Выбрана модель ${displayName}`, {
+    toast.success(t('whisper.selected', { model: displayName }), {
       duration: 3000
     });
   };
@@ -338,8 +340,8 @@ export function ModelManager({
       const modelList = await WhisperAPI.getAvailableModels();
       setModels(modelList);
 
-      toast.success(`${displayName} удалена`, {
-        description: 'Модель удалена для освобождения места',
+      toast.success(t('whisper.deleted', { model: displayName }), {
+        description: t('whisper.deletedDescription'),
         duration: 3000
       });
 
@@ -348,8 +350,8 @@ export function ModelManager({
       }
     } catch (err) {
       console.error('Failed to delete model:', err);
-      toast.error(`Не удалось удалить ${displayName}`, {
-        description: err instanceof Error ? err.message : 'Ошибка удаления',
+      toast.error(t('whisper.deleteFailed', { model: displayName }), {
+        description: err instanceof Error ? err.message : t('errors.deleteError'),
         duration: 4000
       });
     }
@@ -359,7 +361,7 @@ export function ModelManager({
     const modelNameMapping: { [key: string]: string } = {
       "small": "Small",
       "medium-q5_0": "Medium",
-      "large-v3-q5_0": "Large V3 (сжатая)",
+      "large-v3-q5_0": t('whisper.displayName.largeV3Compressed'),
       "large-v3-turbo": "Large V3 Turbo",
       "large-v3": "Large V3"
     };
@@ -386,7 +388,7 @@ export function ModelManager({
   if (error) {
     return (
       <div className={`rounded-[14px] border border-rec/30 bg-rec/[0.08] p-4 ${className}`}>
-        <p className="text-[13px] font-medium text-rec">Не удалось загрузить модели</p>
+        <p className="text-[13px] font-medium text-rec">{t('whisper.loadFailed')}</p>
         <p className="mt-1 text-[12px] text-fg-muted">{error}</p>
       </div>
     );
@@ -429,7 +431,7 @@ export function ModelManager({
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="advanced-models">
             <AccordionTrigger>
-              <span className='text-lg'>Дополнительные модели</span>
+              <span className='text-lg'>{t('advancedModels')}</span>
             </AccordionTrigger>
             <AccordionContent>
               <div className="space-y-3 pt-4">
@@ -464,7 +466,7 @@ export function ModelManager({
           animate={{ opacity: 1, y: 0 }}
           className="text-xs text-fg-muted text-center pt-2"
         >
-          Используется {getDisplayName(selectedModel)} для транскрипции
+          {t('whisper.inUse', { model: getDisplayName(selectedModel) })}
         </motion.div>
       )}
     </div>
@@ -483,11 +485,6 @@ interface ModelCardProps {
   displayName: string;
 }
 
-const ACCURACY_RU: Record<string, string> = { High: 'высокая', Good: 'хорошая', Decent: 'приличная' };
-const SPEED_RU: Record<string, string> = {
-  Slow: 'медленная', Medium: 'средняя', Fast: 'быстрая', 'Very Fast': 'очень быстрая',
-};
-
 function ModelCard({
   model,
   isSelected,
@@ -498,6 +495,7 @@ function ModelCard({
   onDelete,
   displayName,
 }: ModelCardProps) {
+  const { t } = useTranslation('models');
   const isAvailable = model.status === 'Available';
   const isMissing = model.status === 'Missing';
   const isError = typeof model.status === 'object' && 'Error' in model.status;
@@ -507,14 +505,16 @@ function ModelCard({
       ? model.status.Downloading
       : null;
 
+  const accuracyText = t(`accuracy.${model.accuracy}`, { defaultValue: model.accuracy });
+  const speedText = t(`speed.${model.speed}`, { defaultValue: model.speed });
   const meta = [
     formatFileSize(model.size_mb),
-    `точность ${ACCURACY_RU[model.accuracy] || model.accuracy}`,
-    `обработка ${SPEED_RU[model.speed] || model.speed}`,
+    t('meta.accuracy', { value: accuracyText }),
+    t('meta.speed', { value: speedText }),
   ].join(' · ');
 
   const description = getModelTagline(model.name, model.speed, model.accuracy);
-  const badge = isRecommended ? 'Рекомендуем' : undefined;
+  const badge = isRecommended ? t('badge.recommended') : undefined;
 
   const cardState: ModelCardState =
     downloadProgress !== null
@@ -551,10 +551,10 @@ function ModelCard({
               onCancel();
             }}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[11px] text-fg-faint transition-colors hover:text-rec"
-            title="Отменить загрузку"
+            title={t('actions.cancelTitle')}
           >
             <X className="h-3 w-3" />
-            Отменить
+            {t('actions.cancel')}
           </button>
         </div>
       )}
@@ -568,7 +568,7 @@ function ModelCard({
             }}
             className="inline-flex h-[30px] items-center rounded-md bg-rec px-3 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
           >
-            Повторить
+            {t('actions.retry')}
           </button>
         </div>
       )}
@@ -583,7 +583,7 @@ function ModelCard({
             className="inline-flex h-[30px] items-center gap-1 rounded-md border border-line bg-elevated px-3 text-[12px] font-medium text-fg-muted transition-colors hover:bg-fg/[0.04]"
           >
             <Trash2 className="h-3 w-3" />
-            Удалить
+            {t('actions.delete')}
           </button>
           <button
             onClick={(e) => {
@@ -592,7 +592,7 @@ function ModelCard({
             }}
             className="inline-flex h-[30px] items-center rounded-md bg-accent px-3 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
           >
-            Скачать заново
+            {t('actions.redownload')}
           </button>
         </div>
       )}
@@ -605,10 +605,10 @@ function ModelCard({
               onDelete();
             }}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[11px] text-fg-faint transition-colors hover:text-rec"
-            title="Удалить модель для освобождения места"
+            title={t('actions.deleteToFreeSpace')}
           >
             <Trash2 className="h-3 w-3" />
-            Удалить
+            {t('actions.delete')}
           </button>
         </div>
       )}

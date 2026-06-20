@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
@@ -229,6 +230,7 @@ export function SummaryObsidianCard({
   isGenerating = false,
   canGenerate = true,
 }: Props) {
+  const { t } = useTranslation('meeting');
   const [opening, setOpening] = useState(false);
 
   const openInObsidian = async () => {
@@ -236,8 +238,8 @@ export function SummaryObsidianCard({
     try {
       const folder = await getSummaryFolder();
       if (!folder) {
-        toast.error('Папка для саммари не настроена', {
-          description: 'Укажите её в Настройках → «Папка для саммари (Obsidian)».',
+        toast.error(t('toasts.summaryFolderNotConfigured'), {
+          description: t('toasts.summaryFolderNotConfiguredDescription'),
         });
         return;
       }
@@ -245,13 +247,13 @@ export function SummaryObsidianCard({
       const markdown = pickSummaryMarkdown(aiSummary);
       const path = await exportSummaryToMd(meeting, markdown);
       if (!path) {
-        toast.error('Нечего открывать', { description: 'Саммари пустое.' });
+        toast.error(t('toasts.nothingToOpen'), { description: t('toasts.nothingToOpenDescription') });
         return;
       }
 
       await invoke('open_in_obsidian', { filePath: path });
     } catch (e: any) {
-      toast.error('Не удалось открыть в Obsidian', {
+      toast.error(t('toasts.obsidianOpenFailed'), {
         description: e?.message ?? String(e),
       });
     } finally {
@@ -265,10 +267,9 @@ export function SummaryObsidianCard({
         <div className="w-[54px] h-[54px] rounded-[16px] bg-surface flex items-center justify-center text-accent-text mb-[18px]">
           <SparkleIcon size={24} />
         </div>
-        <h3 className="text-[17px] font-semibold text-fg mb-2">Саммари ещё не создано</h3>
+        <h3 className="text-[17px] font-semibold text-fg mb-2">{t('empty.title')}</h3>
         <p className="text-[13.5px] leading-[1.6] text-fg-muted max-w-[300px] mb-[22px]">
-          Ember проанализирует транскрипт и подготовит краткое содержание, решения и
-          задачи.
+          {t('empty.description')}
         </p>
 
         {onPromptChange && (
@@ -277,7 +278,7 @@ export function SummaryObsidianCard({
               type="text"
               value={customPrompt}
               onChange={(e) => onPromptChange(e.target.value)}
-              placeholder="Добавьте контекст: имена участников, цель встречи…"
+              placeholder={t('empty.promptPlaceholder')}
               className="w-full px-3.5 py-3 rounded-md bg-elevated border border-line text-[13px] text-fg placeholder:text-fg-faint focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent/40 transition-colors"
             />
           </div>
@@ -291,7 +292,7 @@ export function SummaryObsidianCard({
             className="w-full max-w-[320px] h-[46px] rounded-md bg-accent hover:opacity-90 text-white text-[14.5px] font-medium inline-flex items-center justify-center gap-2.5 shadow-glow transition-opacity disabled:opacity-50"
           >
             <SparkleIcon size={16} />
-            Сгенерировать саммари
+            {t('empty.generate')}
           </button>
         )}
       </div>
@@ -310,14 +311,14 @@ export function SummaryObsidianCard({
       </div>
 
       <div className="sticky bottom-0 z-10 bg-canvas border-t border-line pt-3.5 pb-4 mt-[18px] flex items-center justify-between gap-3">
-        <span className="text-[12px] text-fg-faint">Сохранено в Markdown</span>
+        <span className="text-[12px] text-fg-faint">{t('obsidian.savedToMarkdown')}</span>
         <button
           type="button"
           onClick={openInObsidian}
           disabled={opening}
           className="text-[12.5px] font-medium text-accent-text hover:opacity-80 disabled:opacity-60 transition-opacity"
         >
-          {opening ? 'Открываю…' : 'Открыть в Obsidian →'}
+          {opening ? t('obsidian.opening') : t('obsidian.open')}
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { RefreshCw } from 'lucide-react';
@@ -38,6 +39,7 @@ interface DeviceSelectionProps {
 }
 
 export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = false }: DeviceSelectionProps) {
+  const { t } = useTranslation('recordingsettings');
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +59,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
       console.log('Fetched audio devices:', result);
     } catch (err) {
       console.error('Failed to fetch audio devices:', err);
-      setError('Failed to load audio devices. Please check your system audio settings.');
+      setError(t('deviceSelection.loadError'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -162,7 +164,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
     try {
       const deviceNames = inputDevices.map(device => device.name);
       if (deviceNames.length === 0) {
-        setError('No microphone devices found to monitor');
+        setError(t('deviceSelection.noMicToMonitor'));
         return;
       }
 
@@ -172,7 +174,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
       console.log('Started audio level monitoring for input devices:', deviceNames);
     } catch (err) {
       console.error('Failed to start audio level monitoring:', err);
-      setError('Failed to start audio level monitoring');
+      setError(t('deviceSelection.monitoringStartFailed'));
     }
   };
 
@@ -213,7 +215,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
           onClick={handleRefresh}
           disabled={refreshing || disabled}
           className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-fg/[0.06] disabled:pointer-events-none disabled:opacity-50"
-          title="Обновить список устройств"
+          title={t('deviceSelection.refresh')}
         >
           <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
@@ -232,7 +234,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
         {}
         <div className="flex-1 space-y-1.5">
           <Label htmlFor="mic-selection" className="block font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint">
-            Микрофон
+            {t('deviceSelection.mic')}
           </Label>
           <Select
             value={selectedDevices.micDevice || 'default'}
@@ -240,10 +242,10 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
             disabled={disabled}
           >
             <SelectTrigger id="mic-selection" className="w-full h-[42px] px-3.5 rounded-[11px] bg-surface border-line text-[13.5px]">
-              <SelectValue placeholder="Выберите микрофон" />
+              <SelectValue placeholder={t('deviceSelection.micPlaceholder')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Микрофон по умолчанию</SelectItem>
+              <SelectItem value="default">{t('deviceSelection.micDefault')}</SelectItem>
               {inputDevices.map((device) => (
                 <SelectItem
                   key={device.name}
@@ -255,13 +257,13 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
             </SelectContent>
           </Select>
           {inputDevices.length === 0 && (
-            <p className="text-[11px] text-fg-faint">Микрофоны не найдены</p>
+            <p className="text-[11px] text-fg-faint">{t('deviceSelection.micNotFound')}</p>
           )}
 
           {}
           {showLevels && inputDevices.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-line">
-              <p className="text-xs text-fg-muted font-medium">Уровни микрофона:</p>
+              <p className="text-xs text-fg-muted font-medium">{t('deviceSelection.micLevels')}</p>
               {inputDevices.map((device) => {
                 const levelData = audioLevels.get(device.name);
                 return (
@@ -297,7 +299,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
         {}
         <div className="flex-1 space-y-1.5">
           <Label htmlFor="system-selection" className="block font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint">
-            Системный звук
+            {t('deviceSelection.system')}
           </Label>
 
           <Select
@@ -306,10 +308,10 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
             disabled={disabled}
           >
             <SelectTrigger id="system-selection" className="w-full h-[42px] px-3.5 rounded-[11px] bg-surface border-line text-[13.5px]">
-              <SelectValue placeholder="Выберите системный звук" />
+              <SelectValue placeholder={t('deviceSelection.systemPlaceholder')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Системный звук по умолчанию</SelectItem>
+              <SelectItem value="default">{t('deviceSelection.systemDefault')}</SelectItem>
               {outputDevices.map((device) => (
                 <SelectItem
                   key={device.name}
@@ -322,7 +324,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
           </Select>
 
           {outputDevices.length === 0 && (
-            <p className="text-[11px] text-fg-faint">Устройства системного звука не найдены</p>
+            <p className="text-[11px] text-fg-faint">{t('deviceSelection.systemNotFound')}</p>
           )}
         </div>
       </div>
@@ -336,8 +338,8 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
 
       {}
       <div className="text-[11px] text-fg-muted space-y-1">
-        <p>• <strong className="font-medium text-fg">Микрофон:</strong> записывает ваш голос и звуки вокруг</p>
-        <p>• <strong className="font-medium text-fg">Системный звук:</strong> записывает звук с компьютера (музыка, звонки и т.д.)</p>
+        <p>• <strong className="font-medium text-fg">{t('deviceSelection.hint.micLabel')}</strong> {t('deviceSelection.hint.micText')}</p>
+        <p>• <strong className="font-medium text-fg">{t('deviceSelection.hint.systemLabel')}</strong> {t('deviceSelection.hint.systemText')}</p>
       </div>
     </div>
   );

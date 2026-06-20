@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import Analytics from '@/lib/analytics';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
+import { useTranslation } from 'react-i18next';
 
 interface RecordingControlsProps {
   isRecording: boolean;
@@ -43,6 +44,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   meetingName,
   variant = 'transport',
 }) => {
+  const { t } = useTranslation('recording');
   const recordingState = useRecordingState();
   const isPaused = recordingState.isPaused;
   const activeDuration = recordingState.activeDuration;
@@ -118,27 +120,27 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
 
       if (errorMsg.includes('microphone') || errorMsg.includes('mic') || errorMsg.includes('input')) {
         setDeviceError({
-          title: 'Microphone Not Available',
-          message: 'Unable to access your microphone. Please check that:\n• Your microphone is connected\n• The app has microphone permissions\n• No other app is using the microphone'
+          title: t('controls.deviceError.microphoneTitle'),
+          message: t('controls.deviceError.microphoneMessage')
         });
       } else if (errorMsg.includes('system audio') || errorMsg.includes('speaker') || errorMsg.includes('output')) {
         setDeviceError({
-          title: 'System Audio Not Available',
-          message: 'Unable to capture system audio. Please check that:\n• A virtual audio device (like BlackHole) is installed\n• The app has screen recording permissions (macOS)\n• System audio is properly configured'
+          title: t('controls.deviceError.systemAudioTitle'),
+          message: t('controls.deviceError.systemAudioMessage')
         });
       } else if (errorMsg.includes('permission')) {
         setDeviceError({
-          title: 'Permission Required',
-          message: 'Recording permissions are required. Please:\n• Grant microphone access in System Settings\n• Grant screen recording access for system audio (macOS)\n• Restart the app after granting permissions'
+          title: t('controls.deviceError.permissionTitle'),
+          message: t('controls.deviceError.permissionMessage')
         });
       } else {
         setDeviceError({
-          title: 'Recording Failed',
-          message: 'Unable to start recording. Please check your audio device settings and try again.'
+          title: t('controls.deviceError.failedTitle'),
+          message: t('controls.deviceError.failedMessage')
         });
       }
     }
-  }, [onRecordingStart, isStarting, isValidatingModel, selectedDevices, meetingName, isRecording]);
+  }, [onRecordingStart, isStarting, isValidatingModel, selectedDevices, meetingName, isRecording, t]);
 
   const stopRecordingAction = useCallback(async () => {
     console.log('Executing stop recording...');
@@ -349,13 +351,13 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
               {isPaused ? <Play size={15} /> : <Pause size={15} />}
               {(isPausing || isResuming) && (
                 <div className="absolute -top-8 text-fg-muted font-medium text-xs whitespace-nowrap">
-                  {isPausing ? 'Пауза…' : 'Возобновление…'}
+                  {isPausing ? t('controls.pausing') : t('controls.resuming')}
                 </div>
               )}
             </button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{isPaused ? 'Возобновить запись' : 'Пауза'}</p>
+            <p>{isPaused ? t('controls.resume') : t('controls.pause')}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -369,7 +371,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
           {isProcessing && !isParentProcessing ? (
             <div className="flex items-center space-x-2">
               <div className="animate-spin rounded-full h-5 w-5 border-2 border-accent-weak border-t-accent"></div>
-              <span className="text-sm text-fg-muted">Обработка записи…</span>
+              <span className="text-sm text-fg-muted">{t('processingRecording')}</span>
             </div>
           ) : (
             <>
@@ -436,10 +438,10 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                           </button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Начать запись</p>
+                          <p>{t('controls.start')}</p>
                         </TooltipContent>
                       </Tooltip>
-                      <span className="font-mono text-[12px] text-fg-faint tracking-[0.02em]">⌘R&nbsp;&nbsp;чтобы начать</span>
+                      <span className="font-mono text-[12px] text-fg-faint tracking-[0.02em]">⌘R&nbsp;&nbsp;{t('shortcutHint')}</span>
                     </div>
                   ) : (
                     <div className="flex items-center justify-center gap-[24px]">
@@ -474,13 +476,13 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                             <span className={`w-[22px] h-[22px] rounded-[6px] block ${isStopping || isPausing || isResuming ? 'bg-fg-faint' : 'bg-white'}`} />
                             {isStopping && (
                               <div className="absolute -top-8 text-fg-muted font-medium text-xs whitespace-nowrap">
-                                Остановка…
+                                {t('controls.stopping')}
                               </div>
                             )}
                           </button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Остановить запись</p>
+                          <p>{t('controls.stop')}</p>
                         </TooltipContent>
                       </Tooltip>
 
@@ -499,7 +501,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
         {}
         {isValidatingModel && (
           <div className="text-xs text-fg-muted text-center mt-2">
-            Проверка модели распознавания…
+            {t('validatingModel')}
           </div>
         )}
 
@@ -510,7 +512,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
             <button
               onClick={() => setDeviceError(null)}
               className="absolute right-3 top-3 text-rec hover:opacity-80 transition-opacity"
-              aria-label="Закрыть уведомление"
+              aria-label={t('controls.closeNotification')}
             >
               <X className="h-4 w-4" />
             </button>

@@ -5,9 +5,11 @@ import { CurrentMeeting, useSidebar } from '@/components/Sidebar/SidebarProvider
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { load } from '@tauri-apps/plugin-store';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import Analytics from '@/lib/analytics';
 import { isOllamaNotInstalledError } from '@/lib/utils';
 import { BuiltInModelInfo } from '@/lib/builtin-ai';
+import i18n from '@/i18n';
 
 function cleanLeakedMarkdown(md: string): string {
   return md
@@ -45,8 +47,8 @@ function buildFrontmatter(meeting: any, body: string): string {
     '---',
     `date: ${date}`,
     `time: "${time}"`,
-    `device: "Mac"`,
-    `type: "Встреча"`,
+    `device: "${i18n.t('common:summaryExport.device')}"`,
+    `type: "${i18n.t('common:summaryExport.type')}"`,
     `topic: "${topic.replace(/"/g, '\\"')}"`,
     `participants: []`,
     `tags: [meeting]`,
@@ -106,6 +108,7 @@ export function useSummaryGeneration({
   setAiSummary,
   onOpenModelSettings,
 }: UseSummaryGenerationProps) {
+  const { t } = useTranslation('meeting');
   const [summaryStatus, setSummaryStatus] = useState<SummaryStatus>('idle');
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [originalTranscript, setOriginalTranscript] = useState<string>('');
@@ -140,7 +143,7 @@ export function useSummaryGeneration({
             if (onMeetingUpdated) { try { await onMeetingUpdated(); } catch {} }
           } else if (ps === 'error' || ps === 'failed') {
             setSummaryStatus('error');
-            setSummaryError(pollingResult?.error || 'Не удалось сгенерировать саммари');
+            setSummaryError(pollingResult?.error || t('summaryGen.failed'));
           } else if (ps === 'cancelled') {
             setSummaryStatus('idle');
           }
@@ -205,8 +208,8 @@ export function useSummaryGeneration({
         await Analytics.trackCustomPromptUsed(customPrompt.trim().length);
       }
 
-      toast.info(`${isRegeneration ? 'Regenerating' : 'Generating'} summary...`, {
-        description: `Using ${modelConfig.provider}/${modelConfig.model}`,
+      toast.info(isRegeneration ? t('summaryGen.regenerating') : t('summaryGen.generating'), {
+        description: t('summaryGen.usingModel', { provider: modelConfig.provider, model: modelConfig.model }),
         duration: 3000,
       });
 
@@ -333,8 +336,8 @@ export function useSummaryGeneration({
               m.notify.summaryReady(meeting?.title || undefined)
             );
 
-            toast.success('Саммари готово', {
-              description: 'Сводка встречи сгенерирована',
+            toast.success(t('summaryGen.ready'), {
+              description: t('summaryGen.readyDescription'),
               duration: 4000,
             });
 

@@ -1,0 +1,22 @@
+{
+  "description": "本地会议笔记与摘要 — 数据不会离开你的 Mac。",
+  "features": "功能",
+  "tiles": {
+    "privacy": {
+      "title": "隐私",
+      "desc": "所有数据和处理均保留在本地。无需云端。"
+    },
+    "localModels": {
+      "title": "本地模型",
+      "desc": "Whisper 和内置 LLM，无需外部 API。"
+    },
+    "noSubscriptions": {
+      "title": "无订阅",
+      "desc": "免费使用，无按分钟计费。"
+    },
+    "anyMeetings": {
+      "title": "任意会议",
+      "desc": "Meet、Zoom、Teams — 在线和离线均可。"
+    }
+  }
+}

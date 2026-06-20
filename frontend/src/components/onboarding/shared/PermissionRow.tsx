@@ -1,18 +1,20 @@
 import React from 'react';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import type { PermissionRowProps } from '@/types/onboarding';
 
 export function PermissionRow({ icon, title, description, status, isPending = false, onAction }: PermissionRowProps) {
+  const { t } = useTranslation('onboarding');
   const isAuthorized = status === 'authorized';
   const isDenied = status === 'denied';
   const isChecking = isPending;
 
   const getButtonText = () => {
-    if (isChecking) return 'Проверка…';
-    if (isDenied) return 'Открыть настройки';
-    return 'Разрешить';
+    if (isChecking) return t('permissions.row.checking');
+    if (isDenied) return t('permissions.row.openSettings');
+    return t('permissions.row.allow');
   };
 
   return (
@@ -45,12 +47,12 @@ export function PermissionRow({ icon, title, description, status, isPending = fa
             {isAuthorized ? (
               <span className="text-good font-medium flex items-center gap-1.5">
                 <CheckCircle2 className="w-[15px] h-[15px]" />
-                Доступ разрешён
+                {t('permissions.row.granted')}
               </span>
             ) : isDenied ? (
               <span className="text-rec font-medium flex items-center gap-1.5">
                 <XCircle className="w-[15px] h-[15px]" />
-                Доступ запрещён — разрешите в Системных настройках
+                {t('permissions.row.denied')}
               </span>
             ) : (
               <span className="text-fg-muted">{description}</span>

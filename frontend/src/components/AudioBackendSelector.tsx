@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Info } from 'lucide-react';
 
@@ -19,6 +20,7 @@ export function AudioBackendSelector({
   onBackendChange,
   disabled = false,
 }: AudioBackendSelectorProps) {
+  const { t } = useTranslation('recordingsettings');
   const [backends, setBackends] = useState<BackendInfo[]>([]);
   const [currentBackend, setCurrentBackend] = useState<string>('coreaudio');
   const [loading, setLoading] = useState(true);
@@ -42,7 +44,7 @@ export function AudioBackendSelector({
         }
       } catch (err) {
         console.error('Failed to load audio backends:', err);
-        setError('Не удалось загрузить доступные способы захвата');
+        setError(t('backend.loadError'));
       } finally {
         setLoading(false);
       }
@@ -64,7 +66,7 @@ export function AudioBackendSelector({
       console.log(`Audio backend changed to: ${backendId}`);
     } catch (err) {
       console.error('Failed to set audio backend:', err);
-      setError('Не удалось сменить способ захвата. Попробуйте ещё раз.');
+      setError(t('backend.changeError'));
     }
   };
 
@@ -85,7 +87,7 @@ export function AudioBackendSelector({
     <div className="space-y-2.5">
       <div className="flex items-center gap-2">
         <label className="font-mono text-[10px] uppercase tracking-[0.1em] text-fg-faint">
-          Захват системного звука
+          {t('backend.label')}
         </label>
         <div className="relative">
           <button
@@ -98,7 +100,7 @@ export function AudioBackendSelector({
           </button>
           {showTooltip && (
             <div className="absolute z-10 left-6 top-0 w-64 p-3 text-xs bg-elevated border border-line-strong text-fg rounded-[11px] shadow-ember">
-              <p className="font-semibold mb-1">Способы захвата звука:</p>
+              <p className="font-semibold mb-1">{t('backend.tooltipTitle')}</p>
               <ul className="space-y-1">
                 {backends.map((backend) => (
                   <li key={backend.id}>
@@ -107,7 +109,7 @@ export function AudioBackendSelector({
                 ))}
               </ul>
               <p className="mt-2 text-fg-faint">
-                Попробуйте разные способы, чтобы найти лучший для вашей системы.
+                {t('backend.tooltipHint')}
               </p>
             </div>
           )}
@@ -153,12 +155,12 @@ export function AudioBackendSelector({
                   </span>
                   {currentBackend === backend.id && (
                     <span className="font-mono text-[9.5px] uppercase tracking-wide font-medium text-accent-text bg-accent-weak px-2 py-0.5 rounded-md">
-                      Включён
+                      {t('backend.enabled')}
                     </span>
                   )}
                   {isCoreAudio && (
                     <span className="font-mono text-[9.5px] uppercase tracking-wide font-medium text-fg-muted bg-surface px-2 py-0.5 rounded-md">
-                      Выключен
+                      {t('backend.disabled')}
                     </span>
                   )}
                 </div>
@@ -170,9 +172,9 @@ export function AudioBackendSelector({
       </div>
 
       <div className="text-[11px] text-fg-muted space-y-1">
-        <p>• Выбор способа влияет только на захват системного звука</p>
-        <p>• Микрофон всегда использует способ по умолчанию</p>
-        <p>• Изменения применяются к новым сессиям записи</p>
+        <p>• {t('backend.noteSystemOnly')}</p>
+        <p>• {t('backend.noteMicDefault')}</p>
+        <p>• {t('backend.noteNewSessions')}</p>
       </div>
     </div>
   );

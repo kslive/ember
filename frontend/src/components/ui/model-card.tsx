@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { Download, Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 export type ModelCardState = 'download' | 'downloading' | 'ready' | 'selected';
@@ -24,6 +25,7 @@ export function ModelCard({
   name, description, meta, badge, state, progress = 0,
   onDownload, onSelect, onCardClick, disabled, className,
 }: ModelCardProps) {
+  const { t } = useTranslation('models');
   const selected = state === 'selected';
   const pct = `${Math.round(progress)}%`;
   const cardClickable = !!onCardClick && state !== 'downloading';
@@ -48,12 +50,12 @@ export function ModelCard({
           )}
           {state === 'ready' && (
             <span className="inline-flex items-center gap-1.5 text-[11px] text-good">
-              <span className="w-1.5 h-1.5 rounded-full bg-good" />Готова
+              <span className="w-1.5 h-1.5 rounded-full bg-good" />{t('card.ready')}
             </span>
           )}
           {selected && (
             <span className="inline-flex items-center gap-1.5 text-[11px] text-good">
-              <span className="w-1.5 h-1.5 rounded-full bg-good" />Выбрана
+              <span className="w-1.5 h-1.5 rounded-full bg-good" />{t('card.selected')}
             </span>
           )}
         </div>
@@ -73,7 +75,7 @@ export function ModelCard({
             disabled={disabled}
             className="inline-flex items-center gap-[7px] h-[34px] px-3.5 rounded-[11px] bg-surface border border-line text-fg text-[13px] font-medium hover:bg-fg/[0.04] disabled:opacity-50 whitespace-nowrap"
           >
-            <Download className="w-3.5 h-3.5" />Скачать
+            <Download className="w-3.5 h-3.5" />{t('card.download')}
           </button>
         )}
         {state === 'ready' && !onCardClick && (
@@ -83,7 +85,7 @@ export function ModelCard({
             disabled={disabled}
             className="h-[34px] px-4 rounded-[11px] bg-transparent border border-line-strong text-fg text-[13px] font-medium hover:bg-fg/[0.04] disabled:opacity-50 whitespace-nowrap"
           >
-            Выбрать
+            {t('card.select')}
           </button>
         )}
         {selected && (
@@ -93,7 +95,7 @@ export function ModelCard({
         )}
         {state === 'downloading' && (
           <div className="flex flex-col items-end gap-[7px] w-32">
-            <span className="font-mono text-[12px] text-accent-text">Скачивание {pct}</span>
+            <span className="font-mono text-[12px] text-accent-text">{t('card.downloading', { percent: Math.round(progress) })}</span>
             <div className="w-full h-[5px] rounded-[3px] bg-surface overflow-hidden">
               <div className="h-full rounded-[3px] bg-accent transition-[width]" style={{ width: pct }} />
             </div>

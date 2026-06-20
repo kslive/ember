@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
+import i18n, { BCP47 } from '@/i18n';
+import type { Locale } from '@/lib/preferences';
 import {
   Pencil, Trash2, Search, X,
 } from 'lucide-react';
@@ -52,18 +55,13 @@ function cleanMeetingTitle(t: string): string {
   const isAutoName =
     raw === '' ||
     /^meeting\b/i.test(raw) ||
-    /^запись[\s_-]*\d/i.test(raw) ||
+    /^(запись|recording|录音)[\s_-]*\d/i.test(raw) ||
     /^(\+\s*)?new call$/i.test(raw) ||
     raw === 'intro-call';
-  if (isAutoName) return 'Встреча';
+  if (isAutoName) return i18n.t('sidebar:untitledMeeting');
   const cleaned = raw.replace(/^(?:[\p{Extended_Pictographic}‍️#\s—·-])+/u, '').trim();
-  return cleaned || 'Встреча';
+  return cleaned || i18n.t('sidebar:untitledMeeting');
 }
-
-const MONTHS_RU_GEN = [
-  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
-];
 
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -71,9 +69,12 @@ function dayKey(d: Date): string {
 
 function dayLabel(d: Date, todayKey: string, yesterdayKey: string): string {
   const key = dayKey(d);
-  if (key === todayKey) return 'Сегодня';
-  if (key === yesterdayKey) return 'Вчера';
-  return `${d.getDate()} ${MONTHS_RU_GEN[d.getMonth()]} ${d.getFullYear()}`;
+  if (key === todayKey) return i18n.t('sidebar:dateGroups.today');
+  if (key === yesterdayKey) return i18n.t('sidebar:dateGroups.yesterday');
+  const locale = BCP47[(i18n.language as Locale)] ?? i18n.language;
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric', month: 'long', year: 'numeric',
+  }).format(d);
 }
 
 function timeLabel(m: CurrentMeeting): string | null {
@@ -100,7 +101,7 @@ function groupMeetingsByDate(
 
   for (const m of meetings) {
     const t = m.created_at ? new Date(m.created_at) : null;
-    if (!t || Number.isNaN(t.getTime())) { push('Без даты', m); continue; }
+    if (!t || Number.isNaN(t.getTime())) { push(i18n.t('sidebar:dateGroups.noDate'), m); continue; }
     push(dayLabel(t, todayKey, yesterdayKey), m);
   }
 
@@ -108,6 +109,7 @@ function groupMeetingsByDate(
 }
 
 export default function Sidebar() {
+  const { t } = useTranslation('sidebar');
   const router = useRouter();
   const pathname = usePathname();
   const {
@@ -161,9 +163,9 @@ export default function Sidebar() {
         setCurrentMeeting({ id: 'intro-call', title: '+ New Call' });
         router.push('/');
       }
-      toast.success('Встреча удалена');
+      toast.success(t('toasts.deleted'));
     } catch (e: any) {
-      toast.error('Не удалось удалить', { description: e?.message ?? String(e) });
+      toast.error(t('toasts.deleteFailed'), { description: e?.message ?? String(e) });
     } finally {
       setDelState({ open: false, id: null, title: '' });
     }
@@ -172,14 +174,14 @@ export default function Sidebar() {
   const handleRename = async () => {
     if (!renState.id) return;
     const title = renState.value.trim();
-    if (!title) { toast.error('Название не может быть пустым'); return; }
+    if (!title) { toast.error(t('toasts.titleEmpty')); return; }
     try {
       await invoke('api_save_meeting_title', { meetingId: renState.id, title });
       setMeetings(meetings.map(m => m.id === renState.id ? { ...m, title } : m));
       if (currentMeeting?.id === renState.id) setCurrentMeeting({ id: renState.id, title });
-      toast.success('Название обновлено');
+      toast.success(t('toasts.titleUpdated'));
     } catch (e: any) {
-      toast.error('Не удалось обновить', { description: e?.message ?? String(e) });
+      toast.error(t('toasts.updateFailed'), { description: e?.message ?? String(e) });
     } finally {
       setRenState({ open: false, id: null, value: '' });
     }
@@ -212,7 +214,7 @@ export default function Sidebar() {
             <input
               value={query}
               onChange={(e) => onSearch(e.target.value)}
-              placeholder="Поиск по встречам"
+              placeholder={t('searchPlaceholder')}
               className="w-full min-w-0 h-10 pl-9 pr-8 text-[13.5px] rounded-[11px] bg-surface text-fg focus:bg-canvas focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-fg-faint transition-colors text-ellipsis overflow-hidden"
             />
             {query && (
@@ -235,7 +237,7 @@ export default function Sidebar() {
                 <path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" />
               </svg>
             }
-            label="Главная"
+            label={t('nav.home')}
             active={onHome}
             onClick={() => router.push('/')}
           />
@@ -247,7 +249,7 @@ export default function Sidebar() {
                 <circle cx="15" cy="16" r="2.3" fill="currentColor" stroke="none" />
               </svg>
             }
-            label="Настройки"
+            label={t('nav.settings')}
             active={!!onSettings}
             onClick={() => router.push('/settings')}
           />
@@ -257,7 +259,7 @@ export default function Sidebar() {
         <div className="titlebar-no-drag flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-2 mt-1">
           <div className="flex items-center justify-between px-4 mt-2 mb-1.5">
             <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-fg-faint">
-              Встречи
+              {t('meetingsHeader')}
             </span>
             <span className="font-mono text-[10.5px] text-fg-faint tabular-nums">{filteredMeetings.length}</span>
           </div>
@@ -265,12 +267,12 @@ export default function Sidebar() {
           {filteredMeetings.length === 0 && (
             query ? (
               <div className="px-4 py-3 text-caption text-fg-faint">
-                {isSearching ? 'Идёт поиск…' : 'Ничего не найдено.'}
+                {isSearching ? t('search.inProgress') : t('search.noResults')}
               </div>
             ) : (
               <div className="mx-3 mt-2 px-4 py-5 rounded-[11px] border border-dashed border-line-strong text-center">
                 <p className="text-[13px] leading-relaxed text-fg-faint">
-                  Пока нет встреч.<br />Начните первую запись.
+                  {t('empty.noMeetings')}<br />{t('empty.startFirst')}
                 </p>
               </div>
             )
@@ -320,13 +322,13 @@ export default function Sidebar() {
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setRenState({ open: true, id: m.id, value: m.title }); }}
                           className="w-6 h-6 inline-flex items-center justify-center rounded-md text-fg-faint hover:text-fg hover:bg-fg/[0.08]"
-                          aria-label="Переименовать"
+                          aria-label={t('actions.rename')}
                         ><Pencil className="w-3.5 h-3.5" /></button>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setDelState({ open: true, id: m.id, title: m.title }); }}
                           className="w-6 h-6 inline-flex items-center justify-center rounded-md text-fg-faint hover:text-rec hover:bg-fg/[0.08]"
-                          aria-label="Удалить"
+                          aria-label={t('actions.delete')}
                         ><Trash2 className="w-3.5 h-3.5" /></button>
                       </span>
                     </li>
@@ -344,32 +346,32 @@ export default function Sidebar() {
         onOpenChange={(o) => !o && setDelState({ open: false, id: null, title: '' })}
         onConfirm={handleDelete}
         tone="danger"
-        title="Удалить встречу?"
-        message={`Будут удалены транскрипт, саммари и аудио встречи «${cleanMeetingTitle(delState.title)}». Действие необратимо.`}
-        confirmLabel="Удалить"
-        cancelLabel="Отмена"
+        title={t('deleteDialog.title')}
+        message={t('deleteDialog.message', { title: cleanMeetingTitle(delState.title) })}
+        confirmLabel={t('deleteDialog.confirm')}
+        cancelLabel={t('deleteDialog.cancel')}
       />
 
       {}
       <Dialog open={renState.open} onOpenChange={(o) => !o && setRenState({ open: false, id: null, value: '' })}>
         <DialogContent>
-          <DialogTitle>Переименовать встречу</DialogTitle>
+          <DialogTitle>{t('renameDialog.title')}</DialogTitle>
           <VisuallyHidden>
-            <DialogDescription>Введите новое название встречи.</DialogDescription>
+            <DialogDescription>{t('renameDialog.description')}</DialogDescription>
           </VisuallyHidden>
           <input
             autoFocus
             value={renState.value}
             onChange={(e) => setRenState((s) => ({ ...s, value: e.target.value }))}
             onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); }}
-            placeholder="Название встречи"
+            placeholder={t('renameDialog.placeholder')}
             className="w-full h-10 px-3 text-small rounded-[11px] bg-surface border border-line focus:outline-none focus:ring-2 focus:ring-accent"
           />
           <DialogFooter className="gap-2">
             <button onClick={() => setRenState({ open: false, id: null, value: '' })}
-                    className="px-3.5 h-9 rounded-[11px] text-small text-fg-muted hover:bg-fg/[0.06]">Отмена</button>
+                    className="px-3.5 h-9 rounded-[11px] text-small text-fg-muted hover:bg-fg/[0.06]">{t('renameDialog.cancel')}</button>
             <button onClick={handleRename}
-                    className="px-3.5 h-9 rounded-[11px] text-small text-white bg-accent hover:opacity-90">Сохранить</button>
+                    className="px-3.5 h-9 rounded-[11px] text-small text-white bg-accent hover:opacity-90">{t('renameDialog.save')}</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

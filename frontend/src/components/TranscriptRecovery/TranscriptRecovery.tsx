@@ -15,6 +15,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MeetingMetadata, StoredTranscript } from '@/services/indexedDBService';
 import { cn } from '@/lib/utils';
+import { formatDateTime } from '@/lib/datetime';
+import { useLocale } from '@/contexts/LocaleContext';
 
 interface TranscriptRecoveryProps {
   isOpen: boolean;
@@ -33,6 +35,7 @@ export function TranscriptRecovery({
   onDelete,
   onLoadPreview,
 }: TranscriptRecoveryProps) {
+  const { locale } = useLocale();
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [previewTranscripts, setPreviewTranscripts] = useState<StoredTranscript[]>([]);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -170,7 +173,7 @@ export function TranscriptRecovery({
                   <div className="p-4 border-b bg-muted/50">
                     <h4 className="font-semibold">{selectedMeeting.title}</h4>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Started {new Date(selectedMeeting.startTime).toLocaleString()}
+                      Started {formatDateTime(selectedMeeting.startTime, locale)}
                     </p>
                     <div className="flex items-center gap-4 mt-2 text-sm">
                       <span className="flex items-center gap-1">
@@ -218,7 +221,7 @@ export function TranscriptRecovery({
                                 }
                                 return '--:--';
                               }
-                              return date.toLocaleTimeString();
+                              return formatDateTime(date, locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                             } catch {
                               return '--:--';
                             }

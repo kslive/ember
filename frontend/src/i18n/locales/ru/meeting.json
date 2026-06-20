@@ -1,0 +1,85 @@
+{
+  "untitled": "Встреча",
+  "meta": {
+    "minutes_one": "{{count}} мин",
+    "minutes_few": "{{count}} мин",
+    "minutes_many": "{{count}} мин",
+    "minutes_other": "{{count}} мин",
+    "participants_one": "{{count}} участник",
+    "participants_few": "{{count}} участника",
+    "participants_many": "{{count}} участников",
+    "participants_other": "{{count}} участников"
+  },
+  "transcript": {
+    "label": "Транскрипт"
+  },
+  "summary": {
+    "label": "Саммари"
+  },
+  "actions": {
+    "copy": "Копировать",
+    "copyTitle": "Копировать саммари",
+    "model": "Модель",
+    "modelTitle": "Модель",
+    "generate": "Сгенерировать",
+    "regenerate": "Перегенерировать",
+    "generateTitle": "{{label}} саммари",
+    "stop": "Остановить",
+    "stopTitle": "Остановить генерацию",
+    "processing": "Обработка…",
+    "modelLoading": "Загрузка модели…",
+    "modelChecking": "Проверка модели…"
+  },
+  "modelSettings": {
+    "title": "Настройки модели"
+  },
+  "generating": {
+    "title": "Создаём саммари",
+    "analyzing": "Анализ транскрипта",
+    "decisions": "Выделение решений",
+    "tasks": "Формирование задач"
+  },
+  "empty": {
+    "title": "Саммари ещё не создано",
+    "description": "Ember проанализирует транскрипт и подготовит краткое содержание, решения и задачи.",
+    "promptPlaceholder": "Добавьте контекст: имена участников, цель встречи…",
+    "generate": "Сгенерировать саммари"
+  },
+  "obsidian": {
+    "savedToMarkdown": "Сохранено в Markdown",
+    "open": "Открыть в Obsidian →",
+    "opening": "Открываю…"
+  },
+  "toasts": {
+    "modelConfigSaved": "Настройки модели сохранены",
+    "modelConfigSaveFailed": "Не удалось сохранить настройки модели",
+    "noModelSelected": "Не выбрана встроенная AI-модель",
+    "noModelSelectedDescription": "Выберите модель в настройках",
+    "modelNotFound": "Модель не найдена",
+    "modelNotFoundDescription": "Не удалось найти информацию о модели: {{model}}",
+    "modelDownloading": "Модель скачивается",
+    "modelDownloadingDescription": "{{model}} загружается ({{progress}}%). Дождитесь завершения загрузки.",
+    "modelNotDownloaded": "Модель не скачана",
+    "modelNotDownloadedDescription": "{{model}} нужно скачать перед использованием. Открываю настройки модели…",
+    "modelCorrupted": "Файл модели повреждён",
+    "modelCorruptedDescription": "Файл модели {{model}} повреждён. Удалите и скачайте заново.",
+    "modelError": "Ошибка модели",
+    "modelErrorDescription": "Произошла ошибка с моделью",
+    "modelUnavailable": "Модель недоступна",
+    "modelUnavailableDescription": "Выбранная модель не готова к использованию",
+    "modelCheckFailed": "Не удалось проверить статус модели",
+    "summaryFolderNotConfigured": "Папка для саммари не настроена",
+    "summaryFolderNotConfiguredDescription": "Укажите её в Настройках → «Папка для саммари (Obsidian)».",
+    "nothingToOpen": "Нечего открывать",
+    "nothingToOpenDescription": "Саммари пустое.",
+    "obsidianOpenFailed": "Не удалось открыть в Obsidian"
+  },
+  "summaryGen": {
+    "generating": "Генерирование саммари…",
+    "regenerating": "Перегенерирование саммари…",
+    "usingModel": "Используется {{provider}}/{{model}}",
+    "ready": "Саммари готово",
+    "readyDescription": "Сводка встречи сгенерирована",
+    "failed": "Не удалось сгенерировать саммари"
+  }
+}

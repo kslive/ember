@@ -89,3 +89,6 @@ _design_reference/
 
 # local build helper (contains an absolute machine-specific path)
 /scripts/cc-dylib-nodeadstrip.sh
+
+# Claude Code local config
+.claude/

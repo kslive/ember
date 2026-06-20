@@ -1,0 +1,108 @@
+{
+  "loading": "Загрузка моделей…",
+  "builtinSection": "Встроенные ИИ-модели",
+  "advancedModels": "Дополнительные модели",
+  "empty": "Модели не найдены. Скачайте модель, чтобы начать работу со встроенным ИИ.",
+  "card": {
+    "ready": "Готова",
+    "selected": "Выбрана",
+    "download": "Скачать",
+    "select": "Выбрать",
+    "downloading": "Скачивание {{percent}}%"
+  },
+  "badge": {
+    "recommended": "Рекомендуем",
+    "balance": "Баланс"
+  },
+  "actions": {
+    "cancel": "Отмена",
+    "cancelTitle": "Отменить загрузку",
+    "retry": "Повторить",
+    "redownload": "Скачать заново",
+    "delete": "Удалить",
+    "deleteTitle": "Удалить модель",
+    "deleteToFreeSpace": "Удалить модель для освобождения места"
+  },
+  "meta": {
+    "sizeContext": "{{size}} МБ · {{tokens}} токенов",
+    "downloadProgress": "{{downloaded}} МБ из {{total}} МБ",
+    "downloadSpeed": "{{speed}} МБ/с",
+    "sizeMb": "{{size}}MB",
+    "sizeGb": "{{size}}GB",
+    "accuracy": "точность {{value}}",
+    "speed": "обработка {{value}}"
+  },
+  "accuracy": {
+    "High": "высокая",
+    "Good": "хорошая",
+    "Decent": "приличная"
+  },
+  "speed": {
+    "Slow": "медленная",
+    "Medium": "средняя",
+    "Fast": "быстрая",
+    "Very Fast": "очень быстрая"
+  },
+  "errors": {
+    "generic": "Произошла ошибка",
+    "corrupted": "Файл повреждён. Повторите скачивание или удалите.",
+    "unknown": "Неизвестная ошибка",
+    "deleteError": "Ошибка удаления"
+  },
+  "builtin": {
+    "loadFailed": "Не удалось загрузить модели",
+    "downloadComplete": "Модель {{model}} успешно скачана",
+    "downloadFailed": "Не удалось скачать {{model}}",
+    "downloadCancelled": "Скачивание {{model}} отменено",
+    "deleted": "Модель {{model}} удалена",
+    "deleteFailed": "Не удалось удалить {{model}}"
+  },
+  "whisper": {
+    "loadFailed": "Не удалось загрузить модели",
+    "loadFailedTranscription": "Не удалось загрузить модели для транскрипции",
+    "ready": "{{icon}} {{model}} готова!",
+    "readyDescription": "Модель скачана и готова к использованию",
+    "downloadFailed": "Не удалось скачать {{model}}",
+    "downloadStarted": "Скачивание {{model}}...",
+    "downloadStartedDescription": "Это может занять несколько минут",
+    "cancelled": "Загрузка {{model}} отменена",
+    "cancelFailed": "Не удалось отменить загрузку",
+    "selected": "Выбрана модель {{model}}",
+    "deleted": "{{model}} удалена",
+    "deletedDescription": "Модель удалена для освобождения места",
+    "deleteFailed": "Не удалось удалить {{model}}",
+    "inUse": "Используется {{model}} для транскрипции",
+    "displayName": {
+      "largeV3Compressed": "Large V3 (сжатая)"
+    }
+  },
+  "tagline": {
+    "sep": " • ",
+    "speed": {
+      "veryFast": "Реальное время",
+      "fast": "Быстрая обработка",
+      "medium": "Средняя скорость",
+      "slow": "Медленнее"
+    },
+    "feature": {
+      "largeV3": "Самая точная",
+      "largeV3Turbo": "Точность и скорость",
+      "mediumHigh": "Профессиональное качество",
+      "mediumStd": "Сбалансированное качество",
+      "small": "Хорошая точность",
+      "base": "Сбалансированное качество",
+      "tiny": "Самая быстрая"
+    },
+    "quant": {
+      "optimized": ", оптимизирована",
+      "ultraFast": ", ультрабыстрая"
+    }
+  },
+  "perfBadge": {
+    "fullPrecision": "Полная точность",
+    "balancePlus": "Баланс+",
+    "balance": "Баланс",
+    "fast": "Быстрая",
+    "standard": "Стандарт"
+  }
+}

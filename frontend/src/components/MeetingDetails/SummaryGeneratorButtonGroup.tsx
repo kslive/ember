@@ -21,6 +21,7 @@ import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { isOllamaNotInstalledError } from '@/lib/utils';
 import { BuiltInModelInfo } from '@/lib/builtin-ai';
 
@@ -57,6 +58,7 @@ export function SummaryGeneratorButtonGroup({
   isModelConfigLoading = false,
   onOpenModelSettings
 }: SummaryGeneratorButtonGroupProps) {
+  const { t } = useTranslation('meeting');
   const [isCheckingModels, setIsCheckingModels] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
 
@@ -81,8 +83,8 @@ export function SummaryGeneratorButtonGroup({
       const selectedModel = modelConfig.model;
 
       if (!selectedModel) {
-        toast.error('No built-in AI model selected', {
-          description: 'Please select a model in settings',
+        toast.error(t('toasts.noModelSelected'), {
+          description: t('toasts.noModelSelectedDescription'),
           duration: 5000,
         });
         setSettingsDialogOpen(true);
@@ -104,8 +106,8 @@ export function SummaryGeneratorButtonGroup({
       });
 
       if (!modelInfo) {
-        toast.error('Модель не найдена', {
-          description: `Не удалось найти информацию о модели: ${selectedModel}`,
+        toast.error(t('toasts.modelNotFound'), {
+          description: t('toasts.modelNotFoundDescription', { model: selectedModel }),
           duration: 5000,
         });
         setSettingsDialogOpen(true);
@@ -115,16 +117,19 @@ export function SummaryGeneratorButtonGroup({
       const status = modelInfo.status;
 
       if (status.type === 'downloading') {
-        toast.info('Модель скачивается', {
-          description: `${selectedModel} загружается (${status.progress}%). Дождитесь завершения загрузки.`,
+        toast.info(t('toasts.modelDownloading'), {
+          description: t('toasts.modelDownloadingDescription', {
+            model: selectedModel,
+            progress: status.progress,
+          }),
           duration: 5000,
         });
         return;
       }
 
       if (status.type === 'not_downloaded') {
-        toast.error('Модель не скачана', {
-          description: `${selectedModel} нужно скачать перед использованием. Открываю настройки модели…`,
+        toast.error(t('toasts.modelNotDownloaded'), {
+          description: t('toasts.modelNotDownloadedDescription', { model: selectedModel }),
           duration: 5000,
         });
         setSettingsDialogOpen(true);
@@ -132,8 +137,8 @@ export function SummaryGeneratorButtonGroup({
       }
 
       if (status.type === 'corrupted') {
-        toast.error('Файл модели повреждён', {
-          description: `Файл модели ${selectedModel} повреждён. Удалите и скачайте заново.`,
+        toast.error(t('toasts.modelCorrupted'), {
+          description: t('toasts.modelCorruptedDescription', { model: selectedModel }),
           duration: 7000,
         });
         setSettingsDialogOpen(true);
@@ -141,23 +146,23 @@ export function SummaryGeneratorButtonGroup({
       }
 
       if (status.type === 'error') {
-        toast.error('Ошибка модели', {
-          description: status.Error || 'Произошла ошибка с моделью',
+        toast.error(t('toasts.modelError'), {
+          description: status.Error || t('toasts.modelErrorDescription'),
           duration: 5000,
         });
         setSettingsDialogOpen(true);
         return;
       }
 
-      toast.error('Модель недоступна', {
-        description: 'Выбранная модель не готова к использованию',
+      toast.error(t('toasts.modelUnavailable'), {
+        description: t('toasts.modelUnavailableDescription'),
         duration: 5000,
       });
       setSettingsDialogOpen(true);
 
     } catch (error) {
       console.error('Error checking built-in AI models:', error);
-      toast.error('Не удалось проверить статус модели', {
+      toast.error(t('toasts.modelCheckFailed'), {
         description: error instanceof Error ? error.message : String(error),
         duration: 5000,
       });
@@ -222,7 +227,7 @@ export function SummaryGeneratorButtonGroup({
 
   const isGenerating = summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating';
 
-  const generateLabel = hasSummary ? 'Перегенерировать' : 'Сгенерировать';
+  const generateLabel = hasSummary ? t('actions.regenerate') : t('actions.generate');
 
   return (
     <div className="flex items-center gap-2">
@@ -231,15 +236,15 @@ export function SummaryGeneratorButtonGroup({
           <button
             type="button"
             className="inline-flex items-center gap-[7px] h-[34px] px-[13px] rounded-md text-[13px] text-fg-muted bg-elevated border border-line hover:bg-fg/[0.04] transition-colors"
-            title="Модель"
+            title={t('actions.modelTitle')}
           >
             <Settings size={14} />
-            <span className="hidden lg:inline">Модель</span>
+            <span className="hidden lg:inline">{t('actions.model')}</span>
           </button>
         </DialogTrigger>
         <DialogContent aria-describedby={undefined}>
           <VisuallyHidden>
-            <DialogTitle>Настройки модели</DialogTitle>
+            <DialogTitle>{t('modelSettings.title')}</DialogTitle>
           </VisuallyHidden>
           <ModelSettingsModal
             onSave={async (config) => {
@@ -261,10 +266,10 @@ export function SummaryGeneratorButtonGroup({
             onStopGeneration();
           }}
           className="inline-flex items-center gap-[7px] h-[34px] px-[14px] rounded-md text-[13px] bg-rec/10 hover:bg-rec/15 text-rec border border-rec/20 transition-colors"
-          title="Остановить генерацию"
+          title={t('actions.stopTitle')}
         >
           <Square size={14} fill="currentColor" />
-          <span className="hidden lg:inline">Остановить</span>
+          <span className="hidden lg:inline">{t('actions.stop')}</span>
         </button>
       ) : (
         <button
@@ -275,12 +280,12 @@ export function SummaryGeneratorButtonGroup({
           }}
           disabled={isCheckingModels || isModelConfigLoading}
           className="inline-flex items-center gap-[7px] h-[34px] px-[14px] rounded-md text-[13px] font-medium bg-accent hover:opacity-90 text-white shadow-glow transition-opacity disabled:opacity-50"
-          title={isModelConfigLoading ? 'Загрузка модели…' : isCheckingModels ? 'Проверка модели…' : `${generateLabel} саммари`}
+          title={isModelConfigLoading ? t('actions.modelLoading') : isCheckingModels ? t('actions.modelChecking') : t('actions.generateTitle', { label: generateLabel })}
         >
           {isCheckingModels || isModelConfigLoading ? (
             <>
               <Loader2 className="animate-spin" size={14} />
-              <span className="hidden lg:inline">Обработка…</span>
+              <span className="hidden lg:inline">{t('actions.processing')}</span>
             </>
           ) : (
             <>

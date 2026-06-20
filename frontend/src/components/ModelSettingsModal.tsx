@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSidebar } from './Sidebar/SidebarProvider';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
@@ -112,6 +113,7 @@ export function ModelSettingsModal({
   onSave,
   skipInitialFetch = false,
 }: ModelSettingsModalProps) {
+  const { t } = useTranslation('modelsettings');
   const configContext = useConfig();
   const modelConfig = configContext?.modelConfig || propsModelConfig;
   const setModelConfig = configContext?.setModelConfig || propsSetModelConfig;
@@ -377,7 +379,7 @@ export function ModelSettingsModal({
     const trimmedEndpoint = ollamaEndpoint.trim();
 
     if (trimmedEndpoint && !validateOllamaEndpoint(trimmedEndpoint)) {
-      const errorMsg = 'Некорректный адрес Ollama. Должен начинаться с http:// или https://';
+      const errorMsg = t('ollama.invalidEndpoint');
       setError(errorMsg);
       if (!silent) {
         toast.error(errorMsg);
@@ -398,7 +400,7 @@ export function ModelSettingsModal({
 
       setOllamaNotInstalled(false);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Не удалось загрузить модели Ollama';
+      const errorMsg = err instanceof Error ? err.message : t('ollama.loadModelsFailed');
       setError(errorMsg);
 
       if (isOllamaNotInstalledError(errorMsg)) {
@@ -446,7 +448,7 @@ export function ModelSettingsModal({
     } catch (err) {
       console.error('Error loading OpenRouter models:', err);
       setOpenRouterError(
-        err instanceof Error ? err.message : 'Не удалось загрузить модели OpenRouter'
+        err instanceof Error ? err.message : t('openrouter.loadFailed')
       );
     } finally {
       setIsLoadingOpenRouter(false);
@@ -468,7 +470,7 @@ export function ModelSettingsModal({
       }
     } catch (err) {
       console.error('Error loading Built-in AI models:', err);
-      toast.error('Не удалось загрузить встроенные модели');
+      toast.error(t('builtinAi.loadFailed'));
     }
   };
 
@@ -568,7 +570,7 @@ export function ModelSettingsModal({
         console.log('Custom OpenAI config saved successfully');
       } catch (err) {
         console.error('Failed to save custom OpenAI config:', err);
-        toast.error('Не удалось сохранить настройки OpenAI-совместимого сервера');
+        toast.error(t('customOpenai.saveFailed'));
         return;
       }
     }
@@ -609,7 +611,7 @@ export function ModelSettingsModal({
 
   const testCustomOpenAIConnection = async () => {
     if (!customOpenAIEndpoint.trim() || !customOpenAIModel.trim()) {
-      toast.error('Сначала укажите адрес (URL) и название модели');
+      toast.error(t('customOpenai.specifyUrlAndModel'));
       return;
     }
 
@@ -620,7 +622,7 @@ export function ModelSettingsModal({
         apiKey: customOpenAIApiKey.trim() || null,
         model: customOpenAIModel.trim(),
       });
-      toast.success(result.message || 'Подключение успешно!');
+      toast.success(result.message || t('customOpenai.connectionSuccess'));
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       toast.error(errorMsg);
@@ -640,8 +642,8 @@ export function ModelSettingsModal({
     const recommendedModel = 'gemma3:1b';
 
     if (isDownloading(recommendedModel)) {
-      toast.info(`${recommendedModel} уже скачивается`, {
-        description: `Прогресс: ${Math.round(getProgress(recommendedModel) || 0)}%`
+      toast.info(t('ollama.alreadyDownloading', { model: recommendedModel }), {
+        description: t('ollama.downloadProgress', { progress: Math.round(getProgress(recommendedModel) || 0) })
       });
       return;
     }
@@ -661,11 +663,11 @@ export function ModelSettingsModal({
       console.error('Error downloading model:', err);
 
       if (isOllamaNotInstalledError(errorMsg)) {
-        toast.error('Ollama не установлена', {
-          description: 'Скачайте и установите Ollama перед загрузкой моделей.',
+        toast.error(t('ollama.notInstalledToastTitle'), {
+          description: t('ollama.notInstalledToastDesc'),
           duration: 7000,
           action: {
-            label: 'Скачать',
+            label: t('ollama.download'),
             onClick: () => invoke('open_external_url', { url: 'https://ollama.com/download' })
           }
         });
@@ -682,10 +684,10 @@ export function ModelSettingsModal({
         endpoint
       });
 
-      toast.success(`Модель ${modelName} удалена`);
+      toast.success(t('ollama.modelDeleted', { model: modelName }));
       await fetchOllamaModels(true);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Не удалось удалить модель';
+      const errorMsg = err instanceof Error ? err.message : t('ollama.deleteFailed');
       toast.error(errorMsg);
       console.error('Error deleting model:', err);
     }
@@ -725,12 +727,12 @@ export function ModelSettingsModal({
   return (
     <div className="flex flex-col max-h-[85vh] min-h-0">
       <div className="flex-none flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold">Настройки модели</h3>
+        <h3 className="text-lg font-semibold">{t('title')}</h3>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
         <div>
-          <Label>Модель для конспектов</Label>
+          <Label>{t('summaryModelLabel')}</Label>
           <div className="flex space-x-2 mt-1">
             <Select
               value={modelConfig.provider}
@@ -785,12 +787,12 @@ export function ModelSettingsModal({
               }}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Выберите провайдера" />
+                <SelectValue placeholder={t('selectProvider')} />
               </SelectTrigger>
               <SelectContent className="max-h-64 overflow-y-auto">
-                <SelectItem value="builtin-ai">Встроенная локальная модель (без API)</SelectItem>
-                <SelectItem value="ollama">Ollama (локально)</SelectItem>
-                <SelectItem value="custom-openai">Свой OpenAI-совместимый сервер (локально)</SelectItem>
+                <SelectItem value="builtin-ai">{t('provider.builtinAi')}</SelectItem>
+                <SelectItem value="ollama">{t('provider.ollama')}</SelectItem>
+                <SelectItem value="custom-openai">{t('provider.customOpenai')}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -804,14 +806,14 @@ export function ModelSettingsModal({
                     className="flex-1 max-w-[200px] justify-between font-normal"
                   >
                     <span className="truncate">
-                      {modelConfig.model || "Выберите модель…"}
+                      {modelConfig.model || t('selectModel')}
                     </span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[250px] p-0" align="start">
                   <Command>
-                    <CommandInput placeholder="Поиск моделей…" />
+                    <CommandInput placeholder={t('searchModels')} />
                     <CommandList className="max-h-[300px]">
                       {(modelConfig.provider === 'openrouter' && isLoadingOpenRouter) ||
                        (modelConfig.provider === 'openai' && isLoadingOpenAI) ||
@@ -819,11 +821,11 @@ export function ModelSettingsModal({
                        (modelConfig.provider === 'groq' && isLoadingGroq) ? (
                         <div className="py-6 text-center text-sm text-muted-foreground">
                           <RefreshCw className="mx-auto h-4 w-4 animate-spin mb-2" />
-                          Загрузка моделей…
+                          {t('loadingModels')}
                         </div>
                       ) : (
                         <>
-                          <CommandEmpty>Модели не найдены.</CommandEmpty>
+                          <CommandEmpty>{t('noModelsFound')}</CommandEmpty>
                           <CommandGroup>
                             {modelOptions[modelConfig.provider]?.map((model) => (
                               <CommandItem
@@ -858,41 +860,41 @@ export function ModelSettingsModal({
         {modelConfig.provider === 'custom-openai' && (
           <div className="space-y-4 border-t pt-4">
             <div>
-              <Label htmlFor="custom-endpoint">Адрес (URL) *</Label>
+              <Label htmlFor="custom-endpoint">{t('customOpenai.endpointLabel')}</Label>
               <Input
                 id="custom-endpoint"
                 value={customOpenAIEndpoint}
                 onChange={(e) => setCustomOpenAIEndpoint(e.target.value)}
-                placeholder="http://localhost:8000/v1"
+                placeholder={t('customOpenai.endpointPlaceholder')}
                 className="mt-1"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Базовый URL OpenAI-совместимого API
+                {t('customOpenai.endpointHelp')}
               </p>
             </div>
 
             <div>
-              <Label htmlFor="custom-model">Название модели *</Label>
+              <Label htmlFor="custom-model">{t('customOpenai.modelLabel')}</Label>
               <Input
                 id="custom-model"
                 value={customOpenAIModel}
                 onChange={(e) => setCustomOpenAIModel(e.target.value)}
-                placeholder="gpt-4, llama-3-70b и т.д."
+                placeholder={t('customOpenai.modelPlaceholder')}
                 className="mt-1"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Идентификатор модели для запросов
+                {t('customOpenai.modelHelp')}
               </p>
             </div>
 
             <div>
-              <Label htmlFor="custom-api-key">API-ключ (необязательно)</Label>
+              <Label htmlFor="custom-api-key">{t('customOpenai.apiKeyLabel')}</Label>
               <Input
                 id="custom-api-key"
                 type="password"
                 value={customOpenAIApiKey}
                 onChange={(e) => setCustomOpenAIApiKey(e.target.value)}
-                placeholder="Оставьте пустым, если не требуется"
+                placeholder={t('customOpenai.apiKeyPlaceholder')}
                 className="mt-1"
               />
             </div>
@@ -903,7 +905,7 @@ export function ModelSettingsModal({
                 className="flex items-center justify-between cursor-pointer py-2"
                 onClick={() => setIsCustomOpenAIAdvancedOpen(!isCustomOpenAIAdvancedOpen)}
               >
-                <Label className="cursor-pointer">Дополнительно</Label>
+                <Label className="cursor-pointer">{t('customOpenai.advanced')}</Label>
                 {isCustomOpenAIAdvancedOpen ? (
                   <ChevronUp className="h-4 w-4 text-muted-foreground" />
                 ) : (
@@ -914,18 +916,18 @@ export function ModelSettingsModal({
               {isCustomOpenAIAdvancedOpen && (
                 <div className="space-y-3 pl-2 border-l-2 border-muted mt-2">
                   <div>
-                    <Label htmlFor="custom-max-tokens">Макс. токенов</Label>
+                    <Label htmlFor="custom-max-tokens">{t('customOpenai.maxTokensLabel')}</Label>
                     <Input
                       id="custom-max-tokens"
                       type="number"
                       value={customMaxTokens}
                       onChange={(e) => setCustomMaxTokens(e.target.value)}
-                      placeholder="напр., 4096"
+                      placeholder={t('customOpenai.maxTokensPlaceholder')}
                       className="mt-1"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="custom-temperature">Температура (0.0–2.0)</Label>
+                    <Label htmlFor="custom-temperature">{t('customOpenai.temperatureLabel')}</Label>
                     <Input
                       id="custom-temperature"
                       type="number"
@@ -934,12 +936,12 @@ export function ModelSettingsModal({
                       max="2"
                       value={customTemperature}
                       onChange={(e) => setCustomTemperature(e.target.value)}
-                      placeholder="напр., 0.7"
+                      placeholder={t('customOpenai.temperaturePlaceholder')}
                       className="mt-1"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="custom-top-p">Top P (0.0–1.0)</Label>
+                    <Label htmlFor="custom-top-p">{t('customOpenai.topPLabel')}</Label>
                     <Input
                       id="custom-top-p"
                       type="number"
@@ -948,7 +950,7 @@ export function ModelSettingsModal({
                       max="1"
                       value={customTopP}
                       onChange={(e) => setCustomTopP(e.target.value)}
-                      placeholder="напр., 0.9"
+                      placeholder={t('customOpenai.topPPlaceholder')}
                       className="mt-1"
                     />
                   </div>
@@ -968,12 +970,12 @@ export function ModelSettingsModal({
               {isTestingConnection ? (
                 <>
                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Проверка подключения…
+                  {t('customOpenai.testing')}
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="mr-2 h-4 w-4" />
-                  Проверить подключение
+                  {t('customOpenai.testConnection')}
                 </>
               )}
             </Button>
@@ -982,14 +984,14 @@ export function ModelSettingsModal({
 
         {requiresApiKey && (
           <div>
-            <Label>API-ключ</Label>
+            <Label>{t('apiKey.label')}</Label>
             <div className="relative mt-1">
               <Input
                 type={showApiKey ? 'text' : 'password'}
                 value={apiKey || ''}
                 onChange={(e) => setApiKey(e.target.value)}
                 disabled={isApiKeyLocked}
-                placeholder="Введите ваш API-ключ"
+                placeholder={t('apiKey.placeholder')}
                 className="pr-24"
               />
               {isApiKeyLocked && apiKey?.trim() && (
@@ -1006,7 +1008,7 @@ export function ModelSettingsModal({
                     size="icon"
                     onClick={() => setIsApiKeyLocked(!isApiKeyLocked)}
                     className={isLockButtonVibrating ? 'animate-vibrate text-red-500' : ''}
-                    title={isApiKeyLocked ? 'Разблокировать для редактирования' : 'Заблокировать от изменений'}
+                    title={isApiKeyLocked ? t('apiKey.unlock') : t('apiKey.lock')}
                   >
                     {isApiKeyLocked ? <Lock /> : <Unlock />}
                   </Button>
@@ -1030,7 +1032,7 @@ export function ModelSettingsModal({
               className="flex items-center justify-between cursor-pointer py-2"
               onClick={() => setIsEndpointSectionCollapsed(!isEndpointSectionCollapsed)}
             >
-              <Label className="cursor-pointer">Свой адрес (необязательно)</Label>
+              <Label className="cursor-pointer">{t('ollama.customEndpointLabel')}</Label>
               {isEndpointSectionCollapsed ? (
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               ) : (
@@ -1041,7 +1043,7 @@ export function ModelSettingsModal({
             {!isEndpointSectionCollapsed && (
               <>
                 <p className="text-sm text-muted-foreground mt-1 mb-2">
-                  Оставьте пустым или укажите свой адрес (напр., http://x.yy.zz:11434)
+                  {t('ollama.customEndpointHelp')}
                 </p>
                 <div className="flex gap-2 mt-1">
                   <div className="relative flex-1">
@@ -1079,12 +1081,12 @@ export function ModelSettingsModal({
                     {isLoadingOllama ? (
                       <>
                         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Загрузка…
+                        {t('ollama.loading')}
                       </>
                     ) : (
                       <>
                         <RefreshCw className="mr-2 h-4 w-4" />
-                        Загрузить список моделей
+                        {t('ollama.loadModelList')}
                       </>
                     )}
                   </Button>
@@ -1092,7 +1094,7 @@ export function ModelSettingsModal({
                 {ollamaEndpointChanged && !error && (
                   <Alert className="mt-3 border-yellow-500 bg-yellow-50 dark:bg-yellow-500/10 dark:border-yellow-500/40">
                     <AlertDescription className="text-yellow-800 dark:text-yellow-200">
-                      Адрес изменён. Перед сохранением нажмите «Загрузить список моделей», чтобы загрузить модели с нового адреса.
+                      {t('ollama.endpointChangedWarning')}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -1104,10 +1106,10 @@ export function ModelSettingsModal({
         {modelConfig.provider === 'ollama' && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h4 className="text-sm font-bold">Доступные модели Ollama</h4>
+              <h4 className="text-sm font-bold">{t('ollama.availableModels')}</h4>
               {lastFetchedEndpoint && models.length > 0 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">Используется:</span>
+                  <span className="text-muted-foreground">{t('ollama.inUse')}</span>
                   <code className="px-2 py-1 bg-muted rounded text-xs">
                     {lastFetchedEndpoint || 'http://localhost:11434'}
                   </code>
@@ -1117,7 +1119,7 @@ export function ModelSettingsModal({
             {models.length > 0 && (
               <div className="mb-4">
                 <Input
-                  placeholder="Поиск моделей…"
+                  placeholder={t('searchModels')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full"
@@ -1127,7 +1129,7 @@ export function ModelSettingsModal({
             {isLoadingOllama ? (
               <div className="text-center py-8 text-muted-foreground">
                 <RefreshCw className="mx-auto h-8 w-8 animate-spin mb-2" />
-                Загрузка моделей…
+                {t('ollama.loadingModels')}
               </div>
             ) : models.length === 0 ? (
               <div className="space-y-3">
@@ -1135,7 +1137,7 @@ export function ModelSettingsModal({
                   <div className="space-y-4">
                     <Alert className="border-orange-500 bg-orange-50 dark:bg-orange-500/10 dark:border-orange-500/40">
                       <AlertDescription className="text-orange-800 dark:text-orange-200">
-                        Ollama не установлена или не запущена. Скачайте и установите Ollama, чтобы использовать локальные модели.
+                        {t('ollama.notInstalledAlert')}
                       </AlertDescription>
                     </Alert>
                     <Button
@@ -1145,10 +1147,10 @@ export function ModelSettingsModal({
                       className="w-full bg-accent hover:bg-accent"
                     >
                       <ExternalLink className="mr-2 h-4 w-4" />
-                      Скачать Ollama
+                      {t('ollama.downloadOllama')}
                     </Button>
                     <div className="text-sm text-muted-foreground text-center">
-                      После установки Ollama перезапустите приложение и нажмите «Загрузить список моделей», чтобы продолжить.
+                      {t('ollama.afterInstall')}
                     </div>
                   </div>
                 ) : (
@@ -1156,8 +1158,8 @@ export function ModelSettingsModal({
                     <Alert className="mb-4">
                       <AlertDescription>
                         {ollamaEndpointChanged
-                          ? 'Адрес изменён. Нажмите «Загрузить список моделей», чтобы загрузить модели с нового адреса.'
-                          : 'Модели не найдены. Скачайте рекомендуемую модель или нажмите «Загрузить список моделей», чтобы загрузить доступные модели Ollama.'}
+                          ? t('ollama.endpointChangedAlert')
+                          : t('ollama.noModelsAlert')}
                       </AlertDescription>
                     </Alert>
                     {!ollamaEndpointChanged && (
@@ -1172,12 +1174,12 @@ export function ModelSettingsModal({
                           {isDownloading('gemma3:1b') ? (
                             <>
                               <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                              Скачивание gemma3:1b…
+                              {t('ollama.downloading', { model: 'gemma3:1b' })}
                             </>
                           ) : (
                             <>
                               <Download className="mr-2 h-4 w-4" />
-                              Скачать gemma3:1b (рекомендуется, ~800МБ)
+                              {t('ollama.downloadRecommended')}
                             </>
                           )}
                         </Button>
@@ -1186,7 +1188,7 @@ export function ModelSettingsModal({
                         {isDownloading('gemma3:1b') && getProgress('gemma3:1b') !== undefined && (
                           <div className="bg-canvas rounded-md border p-3">
                             <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm font-medium text-accent-text">Скачивание gemma3:1b</span>
+                              <span className="text-sm font-medium text-accent-text">{t('ollama.downloadingTitle', { model: 'gemma3:1b' })}</span>
                               <span className="text-sm font-semibold text-accent-text">
                                 {Math.round(getProgress('gemma3:1b')!)}%
                               </span>
@@ -1209,7 +1211,7 @@ export function ModelSettingsModal({
                 {filteredModels.length === 0 ? (
                   <Alert>
                     <AlertDescription>
-                      По запросу «{searchQuery}» модели не найдены. Попробуйте изменить запрос.
+                      {t('ollama.searchNoResults', { query: searchQuery })}
                     </AlertDescription>
                   </Alert>
                 ) : (
@@ -1229,7 +1231,7 @@ export function ModelSettingsModal({
                         <ModelCard
                           key={model.id}
                           name={model.name}
-                          meta={`размер ${model.size}`}
+                          meta={t('ollama.modelMeta', { size: model.size })}
                           state={cardState}
                           progress={progress ?? 0}
                           onCardClick={
@@ -1275,7 +1277,7 @@ export function ModelSettingsModal({
             onClick={() => commitConfig()}
             disabled={isCustomOpenAIInvalid}
           >
-            Сохранить
+            {t('save')}
           </Button>
         </div>
       )}

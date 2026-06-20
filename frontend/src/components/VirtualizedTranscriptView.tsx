@@ -7,6 +7,7 @@ import { useTranscriptStreaming } from "@/hooks/useTranscriptStreaming";
 import { motion } from "framer-motion";
 import { TranscriptSegmentData } from "@/types";
 import { TranscriptRow } from "./transcript/TranscriptRow";
+import { useTranslation } from "react-i18next";
 
 export interface VirtualizedTranscriptViewProps {
     segments: TranscriptSegmentData[];
@@ -42,6 +43,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
     loadedCount = 0,
     onLoadMore,
 }) => {
+    const { t } = useTranslation('recording');
     const scrollRef = useRef<HTMLDivElement>(null);
     const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
 
@@ -143,8 +145,8 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                         animate={{ opacity: 1 }}
                         className="text-center text-fg-muted mt-8"
                     >
-                        <p className="font-sans text-[38px] font-light tracking-[-0.02em] text-fg leading-[1.1]">Готов к записи</p>
-                        <p className="font-sans text-[15px] leading-[1.6] mt-3.5 text-fg-muted">Начните запись — транскрипт появится здесь в реальном времени</p>
+                        <p className="font-sans text-[38px] font-light tracking-[-0.02em] text-fg leading-[1.1]">{t('ready')}</p>
+                        <p className="font-sans text-[15px] leading-[1.6] mt-3.5 text-fg-muted">{t('emptyHint')}</p>
                     </motion.div>
                 )
             ) : useVirtualization ? (
@@ -193,11 +195,11 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                             {isLoadingMore ? (
                                 <div className="flex items-center gap-2 text-fg-muted">
                                     <div className="w-4 h-4 border-2 border-line border-t-line-strong rounded-full animate-spin" />
-                                    <span className="text-sm">Loading more...</span>
+                                    <span className="text-sm">{t('loadMore.loading')}</span>
                                 </div>
                             ) : hasMore && totalCount > 0 ? (
                                 <span className="text-sm text-fg-faint">
-                                    Showing {loadedCount} of {totalCount} segments
+                                    {t('loadMore.showing', { count: totalCount, loaded: loadedCount, total: totalCount })}
                                 </span>
                             ) : null}
                         </div>
@@ -237,11 +239,11 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                             {isLoadingMore ? (
                                 <div className="flex items-center gap-2 text-fg-muted">
                                     <div className="w-4 h-4 border-2 border-line border-t-line-strong rounded-full animate-spin" />
-                                    <span className="text-sm">Loading more...</span>
+                                    <span className="text-sm">{t('loadMore.loading')}</span>
                                 </div>
                             ) : hasMore && totalCount > 0 ? (
                                 <span className="text-sm text-fg-faint">
-                                    Showing {loadedCount} of {totalCount} segments
+                                    {t('loadMore.showing', { count: totalCount, loaded: loadedCount, total: totalCount })}
                                 </span>
                             ) : null}
                         </div>

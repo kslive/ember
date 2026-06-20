@@ -325,8 +325,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     let currentStep = savedStatus.current_step;
     let completed = savedStatus.completed;
 
-    if (currentStep > 4) {
-      currentStep = 3;
+    if (currentStep > 5) {
+      currentStep = 4;
     }
 
     return {
@@ -443,13 +443,13 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const goToStep = useCallback((step: number) => {
-    setCurrentStep(Math.max(1, Math.min(step, 4)));
+    setCurrentStep(Math.max(1, Math.min(step, 5)));
   }, []);
 
   const goNext = useCallback(() => {
     setCurrentStep((prev: number) => {
       const next = prev + 1;
-      return Math.min(next, 4);
+      return Math.min(next, 5);
     });
   }, []);
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Summary, Transcript } from '@/types';
 import { SummaryObsidianCard } from './SummaryObsidianCard';
 import { ModelConfig } from '@/components/ModelSettingsModal';
@@ -34,6 +35,7 @@ export function SummaryPanel({
   customPrompt,
   onPromptChange,
 }: SummaryPanelProps) {
+  const { t } = useTranslation('meeting');
   const isSummaryLoading =
     summaryStatus === 'processing' ||
     summaryStatus === 'summarizing' ||
@@ -47,7 +49,7 @@ export function SummaryPanel({
       <div className="px-[30px] pt-6 pb-[18px] flex items-center gap-2 text-accent">
         <SparkleIcon />
         <span className="font-mono text-[10.5px] tracking-[0.12em] uppercase text-fg-faint">
-          Саммари
+          {t('summary.label')}
         </span>
       </div>
 
@@ -73,12 +75,13 @@ export function SummaryPanel({
 }
 
 function SummaryGeneratingState({ modelLabel }: { modelLabel: string }) {
+  const { t } = useTranslation('meeting');
   return (
     <div className="px-[30px] py-6 max-w-[820px] mx-auto flex flex-col">
       {}
       <div className="flex items-center gap-[10px] mb-[20px]">
         <div className="w-[15px] h-[15px] rounded-full border-2 border-accent/30 border-t-accent animate-spin shrink-0" />
-        <span className="text-[15px] font-semibold text-fg">Создаём саммари</span>
+        <span className="text-[15px] font-semibold text-fg">{t('generating.title')}</span>
         {modelLabel && (
           <span className="font-mono text-[11.5px] text-fg-faint ml-auto">{modelLabel}</span>
         )}
@@ -98,15 +101,15 @@ function SummaryGeneratingState({ modelLabel }: { modelLabel: string }) {
           >
             <path d="M5 12l5 5L20 6" />
           </svg>
-          Анализ транскрипта
+          {t('generating.analyzing')}
         </div>
         <div className="flex items-center gap-[10px] text-[13.5px] font-medium text-accent-text">
           <div className="w-[15px] h-[15px] rounded-full border-2 border-accent/30 border-t-accent animate-spin shrink-0" />
-          Выделение решений
+          {t('generating.decisions')}
         </div>
         <div className="flex items-center gap-[10px] text-[13.5px] text-fg-faint">
           <div className="w-[15px] h-[15px] rounded-full border-[1.5px] border-line-strong shrink-0" />
-          Формирование задач
+          {t('generating.tasks')}
         </div>
       </div>
 

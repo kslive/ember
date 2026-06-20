@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Summary, SummaryResponse, Transcript } from '@/types';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import Analytics from '@/lib/analytics';
@@ -12,44 +13,46 @@ import { SummaryGeneratorButtonGroup } from '@/components/MeetingDetails/Summary
 import { EditableTitle } from '@/components/EditableTitle';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { formatDate } from '@/lib/datetime';
+import { useLocale } from '@/contexts/LocaleContext';
+import type { Locale } from '@/lib/preferences';
+import type { TFunction } from 'i18next';
 
 function formatMeetingMeta(
   createdAt: string,
+  locale: Locale,
+  t: TFunction,
   durationSeconds?: number,
   participantCount?: number
 ): string {
   const parts: string[] = [];
 
   if (createdAt) {
-    const d = new Date(createdAt);
-    if (!Number.isNaN(d.getTime())) {
-      parts.push(
-        d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
-      );
-    }
+    const formatted = formatDate(createdAt, locale);
+    if (formatted) parts.push(formatted);
   }
 
   if (durationSeconds !== undefined && durationSeconds > 0) {
     const minutes = Math.max(1, Math.round(durationSeconds / 60));
-    parts.push(`${minutes} мин`);
+    parts.push(t('meta.minutes', { count: minutes }));
   }
 
   if (participantCount !== undefined && participantCount > 0) {
-    parts.push(`${participantCount} участников`);
+    parts.push(t('meta.participants', { count: participantCount }));
   }
 
   return parts.join(' · ');
 }
 
-function displayMeetingTitle(t: string): string {
-  const raw = (t || '').trim();
+function displayMeetingTitle(title: string, t: TFunction): string {
+  const raw = (title || '').trim();
   const isAuto =
     raw === '' ||
     /^meeting\b/i.test(raw) ||
-    /^запись[\s_-]*\d/i.test(raw) ||
+    /^(запись|recording|录音)[\s_-]*\d/i.test(raw) ||
     /^(\+\s*)?new call$/i.test(raw) ||
     raw === 'intro-call';
-  return isAuto ? 'Встреча' : raw;
+  return isAuto ? t('untitled') : raw;
 }
 
 function deriveMeetingDuration(transcripts: Transcript[]): number | undefined {
@@ -118,6 +121,9 @@ export default function PageContent({
     transcriptsCount: meeting.transcripts?.length
   });
 
+  const { t } = useTranslation('meeting');
+  const { locale } = useLocale();
+
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [isRecording] = useState(false);
   const [summaryResponse] = useState<SummaryResponse | null>(null);
@@ -159,10 +165,10 @@ export default function PageContent({
       const { emit } = await import('@tauri-apps/api/event');
       await emit('model-config-updated', config);
 
-      toast.success('Настройки модели сохранены');
+      toast.success(t('toasts.modelConfigSaved'));
     } catch (error) {
       console.error('Failed to save model config:', error);
-      toast.error('Не удалось сохранить настройки модели');
+      toast.error(t('toasts.modelConfigSaveFailed'));
     }
   };
 
@@ -231,7 +237,7 @@ export default function PageContent({
       <header className="flex-none px-[30px] pt-[22px] pb-[18px] border-b border-line flex items-start justify-between gap-5">
         <div className="flex flex-col gap-1.5 min-w-0">
           <EditableTitle
-            title={displayMeetingTitle(meetingData.meetingTitle)}
+            title={displayMeetingTitle(meetingData.meetingTitle, t)}
             isEditing={meetingData.isEditingTitle}
             onStartEditing={() => meetingData.setIsEditingTitle(true)}
             onFinishEditing={() => meetingData.setIsEditingTitle(false)}
@@ -240,6 +246,8 @@ export default function PageContent({
           <span className="font-mono text-[12px] text-fg-faint">
             {formatMeetingMeta(
               meeting.created_at,
+              locale,
+              t,
               deriveMeetingDuration(meetingData.transcripts),
               undefined
             )}
@@ -250,10 +258,10 @@ export default function PageContent({
             type="button"
             onClick={copyOperations.handleCopySummary}
             className="inline-flex items-center gap-[7px] h-[34px] px-[13px] rounded-md text-[13px] text-fg-muted bg-elevated border border-line hover:bg-fg/[0.04] transition-colors"
-            title="Копировать саммари"
+            title={t('actions.copyTitle')}
           >
             <CopyIcon />
-            <span className="hidden lg:inline">Копировать</span>
+            <span className="hidden lg:inline">{t('actions.copy')}</span>
           </button>
           <SummaryGeneratorButtonGroup
             modelConfig={modelConfig}

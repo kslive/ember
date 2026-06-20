@@ -1,0 +1,81 @@
+{
+  "untitled": "Meeting",
+  "meta": {
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "participants_one": "{{count}} participant",
+    "participants_other": "{{count}} participants"
+  },
+  "transcript": {
+    "label": "Transcript"
+  },
+  "summary": {
+    "label": "Summary"
+  },
+  "actions": {
+    "copy": "Copy",
+    "copyTitle": "Copy summary",
+    "model": "Model",
+    "modelTitle": "Model",
+    "generate": "Generate",
+    "regenerate": "Regenerate",
+    "generateTitle": "{{label}} summary",
+    "stop": "Stop",
+    "stopTitle": "Stop generation",
+    "processing": "Processing…",
+    "modelLoading": "Loading model…",
+    "modelChecking": "Checking model…"
+  },
+  "modelSettings": {
+    "title": "Model settings"
+  },
+  "generating": {
+    "title": "Generating summary",
+    "analyzing": "Analyzing transcript",
+    "decisions": "Extracting decisions",
+    "tasks": "Forming action items"
+  },
+  "empty": {
+    "title": "No summary yet",
+    "description": "Ember will analyze the transcript and prepare a brief overview, decisions, and action items.",
+    "promptPlaceholder": "Add context: participant names, meeting goal…",
+    "generate": "Generate summary"
+  },
+  "obsidian": {
+    "savedToMarkdown": "Saved to Markdown",
+    "open": "Open in Obsidian →",
+    "opening": "Opening…"
+  },
+  "toasts": {
+    "modelConfigSaved": "Model settings saved",
+    "modelConfigSaveFailed": "Failed to save model settings",
+    "noModelSelected": "No built-in AI model selected",
+    "noModelSelectedDescription": "Please select a model in settings",
+    "modelNotFound": "Model not found",
+    "modelNotFoundDescription": "Could not find information about the model: {{model}}",
+    "modelDownloading": "Model is downloading",
+    "modelDownloadingDescription": "{{model}} is downloading ({{progress}}%). Please wait for it to finish.",
+    "modelNotDownloaded": "Model not downloaded",
+    "modelNotDownloadedDescription": "{{model}} needs to be downloaded before use. Opening model settings…",
+    "modelCorrupted": "Model file is corrupted",
+    "modelCorruptedDescription": "The model file {{model}} is corrupted. Delete it and download again.",
+    "modelError": "Model error",
+    "modelErrorDescription": "An error occurred with the model",
+    "modelUnavailable": "Model unavailable",
+    "modelUnavailableDescription": "The selected model is not ready to use",
+    "modelCheckFailed": "Failed to check model status",
+    "summaryFolderNotConfigured": "Summary folder is not configured",
+    "summaryFolderNotConfiguredDescription": "Set it in Settings → \"Summary folder (Obsidian)\".",
+    "nothingToOpen": "Nothing to open",
+    "nothingToOpenDescription": "The summary is empty.",
+    "obsidianOpenFailed": "Failed to open in Obsidian"
+  },
+  "summaryGen": {
+    "generating": "Generating summary…",
+    "regenerating": "Regenerating summary…",
+    "usingModel": "Using {{provider}}/{{model}}",
+    "ready": "Summary ready",
+    "readyDescription": "The meeting summary has been generated",
+    "failed": "Failed to generate summary"
+  }
+}

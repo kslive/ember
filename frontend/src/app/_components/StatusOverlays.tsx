@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 interface StatusOverlaysProps {
   isProcessing: boolean;
   isSaving: boolean;
@@ -38,19 +40,20 @@ export function StatusOverlays({
   isSaving,
   sidebarCollapsed
 }: StatusOverlaysProps) {
+  const { t } = useTranslation('recording');
   return (
     <>
       {}
       <StatusOverlay
         show={isProcessing}
-        message="Завершаем расшифровку…"
+        message={t('finalizing')}
         sidebarCollapsed={sidebarCollapsed}
       />
 
       {}
       <StatusOverlay
         show={isSaving}
-        message="Сохраняем транскрипт…"
+        message={t('saving')}
         sidebarCollapsed={sidebarCollapsed}
       />
     </>

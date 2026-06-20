@@ -11,16 +11,18 @@ import { PreferenceSettings } from '@/components/PreferenceSettings';
 import { SummaryModelSettings } from '@/components/SummaryModelSettings';
 import { useConfig } from '@/contexts/ConfigContext';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { useTranslation } from 'react-i18next';
 
 const TABS = [
-  { value: 'general', label: 'Общие', icon: Settings2 },
-  { value: 'recording', label: 'Запись', icon: Mic },
-  { value: 'Transcriptionmodels', label: 'Транскрипция', icon: DatabaseIcon },
-  { value: 'summaryModels', label: 'Саммари', icon: SparkleIcon },
+  { value: 'general', labelKey: 'tabs.general', icon: Settings2 },
+  { value: 'recording', labelKey: 'tabs.recording', icon: Mic },
+  { value: 'Transcriptionmodels', labelKey: 'tabs.transcription', icon: DatabaseIcon },
+  { value: 'summaryModels', labelKey: 'tabs.summary', icon: SparkleIcon },
 ] as const;
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { t } = useTranslation('settings');
   const { transcriptModelConfig, setTranscriptModelConfig } = useConfig();
 
   const [activeTab, setActiveTab] = useState('general');
@@ -52,9 +54,9 @@ export default function SettingsPage() {
             className="titlebar-no-drag inline-flex items-center gap-1.5 -ml-2 mb-3 px-2 h-7 rounded-[8px] text-[13px] text-fg-muted hover:bg-fg/[0.05] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Назад</span>
+            <span>{t('chrome.back')}</span>
           </button>
-          <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-fg mb-5">Настройки</h1>
+          <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-fg mb-5">{t('chrome.title')}</h1>
           <TabsList className="bg-surface rounded-[11px] p-1 h-auto inline-flex gap-[3px] w-max titlebar-no-drag">
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -73,7 +75,7 @@ export default function SettingsPage() {
                     />
                   )}
                   <Icon className="relative z-10 w-3.5 h-3.5" />
-                  <span className="relative z-10">{tab.label}</span>
+                  <span className="relative z-10">{t(tab.labelKey)}</span>
                 </TabsTrigger>
               );
             })}

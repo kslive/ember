@@ -16,6 +16,79 @@ pub enum RecordingState {
     Stopping,
 }
 
+/// Localized labels for the system tray menu. Emoji prefixes are kept verbatim
+/// across all locales; only the words change.
+struct TrayStrings {
+    loading_model: &'static str,
+    start_recording: &'static str,
+    starting: &'static str,
+    pause_recording: &'static str,
+    stop_recording: &'static str,
+    pausing: &'static str,
+    resume_recording: &'static str,
+    resuming: &'static str,
+    stopping: &'static str,
+    open_window: &'static str,
+    settings: &'static str,
+    quit: &'static str,
+}
+
+fn get_tray_strings(locale: &str) -> TrayStrings {
+    match locale {
+        "ru" => TrayStrings {
+            loading_model: "⏳ Загрузка модели расшифровки…",
+            start_recording: "Начать запись",
+            starting: "🔄 Запуск записи…",
+            pause_recording: "⏸ Пауза записи",
+            stop_recording: "⏹ Остановить запись",
+            pausing: "⏸ Пауза…",
+            resume_recording: "▶ Продолжить запись",
+            resuming: "▶ Возобновление…",
+            stopping: "⏹ Остановка…",
+            open_window: "Открыть главное окно",
+            settings: "Настройки",
+            quit: "Выход",
+        },
+        "zh" => TrayStrings {
+            loading_model: "⏳ 正在加载转录模型…",
+            start_recording: "开始录音",
+            starting: "🔄 正在启动录音…",
+            pause_recording: "⏸ 暂停录音",
+            stop_recording: "⏹ 停止录音",
+            pausing: "⏸ 正在暂停…",
+            resume_recording: "▶ 继续录音",
+            resuming: "▶ 正在恢复…",
+            stopping: "⏹ 正在停止…",
+            open_window: "打开主窗口",
+            settings: "设置",
+            quit: "退出",
+        },
+        _ => TrayStrings {
+            loading_model: "⏳ Loading transcription model…",
+            start_recording: "Start recording",
+            starting: "🔄 Starting recording…",
+            pause_recording: "⏸ Pause recording",
+            stop_recording: "⏹ Stop recording",
+            pausing: "⏸ Pausing…",
+            resume_recording: "▶ Resume recording",
+            resuming: "▶ Resuming…",
+            stopping: "⏹ Stopping…",
+            open_window: "Open main window",
+            settings: "Settings",
+            quit: "Quit",
+        },
+    }
+}
+
+/// Locale-aware prefix for auto-generated recording/meeting names.
+fn recording_name_prefix(locale: &str) -> &'static str {
+    match locale {
+        "ru" => "Запись",
+        "zh" => "录音",
+        _ => "Recording",
+    }
+}
+
 fn tray_glyph_rgba(rgb: [u8; 3]) -> (Vec<u8>, u32, u32) {
     const W: usize = 44;
     const H: usize = 44;
@@ -158,7 +231,8 @@ fn toggle_recording_handler<R: Runtime>(app: &AppHandle<R>) {
             log::info!("Tray toggle: starting recording directly via Rust command (no frontend round-trip)");
 
             let ts = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
-            let meeting_name = format!("Запись {}", ts);
+            let prefix = recording_name_prefix(&crate::current_locale(&app_clone));
+            let meeting_name = format!("{} {}", prefix, ts);
 
             match crate::audio::recording_commands::start_recording_with_meeting_name(
                 app_clone.clone(),
@@ -362,11 +436,12 @@ fn build_menu<R: Runtime>(
     state: RecordingState,
     can_record: bool,
 ) -> tauri::Result<tauri::menu::Menu<R>> {
+    let s = get_tray_strings(&crate::current_locale(app));
     let mut builder = MenuBuilder::new(app);
 
     if !can_record {
         builder = builder.item(
-            &MenuItemBuilder::new("⏳ Загрузка модели расшифровки…")
+            &MenuItemBuilder::new(s.loading_model)
                 .enabled(false)
                 .build(app)?,
         );
@@ -374,49 +449,49 @@ fn build_menu<R: Runtime>(
         match state {
             RecordingState::Stopped => {
                 builder = builder
-                    .item(&MenuItemBuilder::with_id("toggle_recording", "Начать запись").build(app)?);
+                    .item(&MenuItemBuilder::with_id("toggle_recording", s.start_recording).build(app)?);
             }
             RecordingState::Starting => {
                 builder = builder.item(
-                    &MenuItemBuilder::new("🔄 Запуск записи…")
+                    &MenuItemBuilder::new(s.starting)
                         .enabled(false)
                         .build(app)?,
                 );
             }
             RecordingState::Recording => {
                 builder = builder
-                    .item(&MenuItemBuilder::with_id("pause_recording", "⏸ Пауза записи").build(app)?)
-                    .item(&MenuItemBuilder::with_id("stop_recording", "⏹ Остановить запись").build(app)?);
+                    .item(&MenuItemBuilder::with_id("pause_recording", s.pause_recording).build(app)?)
+                    .item(&MenuItemBuilder::with_id("stop_recording", s.stop_recording).build(app)?);
             }
             RecordingState::Pausing => {
                 builder = builder
                     .item(
-                        &MenuItemBuilder::new("⏸ Пауза…")
+                        &MenuItemBuilder::new(s.pausing)
                             .enabled(false)
                             .build(app)?,
                     )
-                    .item(&MenuItemBuilder::with_id("stop_recording", "⏹ Остановить запись").build(app)?);
+                    .item(&MenuItemBuilder::with_id("stop_recording", s.stop_recording).build(app)?);
             }
             RecordingState::Paused => {
                 builder = builder
                     .item(
-                        &MenuItemBuilder::with_id("resume_recording", "▶ Продолжить запись")
+                        &MenuItemBuilder::with_id("resume_recording", s.resume_recording)
                             .build(app)?,
                     )
-                    .item(&MenuItemBuilder::with_id("stop_recording", "⏹ Остановить запись").build(app)?);
+                    .item(&MenuItemBuilder::with_id("stop_recording", s.stop_recording).build(app)?);
             }
             RecordingState::Resuming => {
                 builder = builder
                     .item(
-                        &MenuItemBuilder::new("▶ Возобновление…")
+                        &MenuItemBuilder::new(s.resuming)
                             .enabled(false)
                             .build(app)?,
                     )
-                    .item(&MenuItemBuilder::with_id("stop_recording", "⏹ Остановить запись").build(app)?);
+                    .item(&MenuItemBuilder::with_id("stop_recording", s.stop_recording).build(app)?);
             }
             RecordingState::Stopping => {
                 builder = builder.item(
-                    &MenuItemBuilder::new("⏹ Остановка…")
+                    &MenuItemBuilder::new(s.stopping)
                         .enabled(false)
                         .build(app)?,
                 );
@@ -426,10 +501,10 @@ fn build_menu<R: Runtime>(
 
     builder
         .item(&PredefinedMenuItem::separator(app)?)
-        .item(&MenuItemBuilder::with_id("open_window", "Открыть главное окно").build(app)?)
-        .item(&MenuItemBuilder::with_id("settings", "Настройки").build(app)?)
+        .item(&MenuItemBuilder::with_id("open_window", s.open_window).build(app)?)
+        .item(&MenuItemBuilder::with_id("settings", s.settings).build(app)?)
         .item(&PredefinedMenuItem::separator(app)?)
-        .item(&MenuItemBuilder::with_id("quit", "Выход").build(app)?)
+        .item(&MenuItemBuilder::with_id("quit", s.quit).build(app)?)
         .build()
 }
 

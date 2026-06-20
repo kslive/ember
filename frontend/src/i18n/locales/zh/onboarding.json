@@ -1,0 +1,78 @@
+{
+  "language": {
+    "title": "选择语言",
+    "subtitle": "界面使用哪种语言？稍后可在“设置”中更改。"
+  },
+  "step": "第 {{current}} / {{total}} 步",
+  "stepShort": "第 {{current}} / {{total}} 步",
+  "stepDotAria": "第 {{step}} 步",
+  "welcome": {
+    "title": "欢迎使用 Ember",
+    "description": "会议转录与摘要——完全在你的设备上完成。一分钟即可设置完毕。",
+    "features": {
+      "local": {
+        "title": "本地且私密",
+        "caption": "音频和文本绝不离开你的电脑"
+      },
+      "offline": {
+        "title": "离线可用",
+        "caption": "模型直接在你的设备上运行"
+      },
+      "export": {
+        "title": "导出为 Markdown",
+        "caption": "摘要可立即用于 Obsidian"
+      }
+    },
+    "cta": "开始设置"
+  },
+  "setup": {
+    "title": "准备中",
+    "description": "Ember 需要下载用于语音识别和生成笔记的 AI 模型才能工作。",
+    "stepLabel": "第 {{number}} 步",
+    "transcription": {
+      "title": "语音识别引擎",
+      "caption": "Whisper 在本地将音频转写为文本"
+    },
+    "summarization": {
+      "title": "用于笔记的 AI",
+      "caption": "将转录文本整理为结构化摘要",
+      "tooltip": "你也可以在设置中选择外部 AI 提供商（OpenAI、Claude、Ollama）。"
+    },
+    "cta": "开始"
+  },
+  "permissions": {
+    "title": "权限",
+    "description": "Ember 需要访问麦克风和系统声音才能录制会议",
+    "microphone": {
+      "title": "麦克风",
+      "description": "在会议期间录制你的声音所必需",
+      "settingsAlert": "请在“系统设置 → 隐私与安全性 → 麦克风”中允许访问麦克风"
+    },
+    "systemAudio": {
+      "title": "系统声音",
+      "description": "点击“允许”以授予音频捕获权限",
+      "settingsAlert": "请在“系统设置 → 隐私与安全性 → 音频捕获”中允许捕获音频"
+    },
+    "finish": "完成设置",
+    "later": "稍后再说",
+    "noAccessNote": "没有这些权限录制将无法工作。你可以稍后在设置中授予。",
+    "row": {
+      "checking": "检查中…",
+      "openSettings": "打开设置",
+      "allow": "允许",
+      "granted": "已授予访问权限",
+      "denied": "访问被拒绝——请在系统设置中授予"
+    }
+  },
+  "download": {
+    "stepLabel": "第 3 / 3 步",
+    "title": "正在下载模型",
+    "description": "请选择用于语音识别的 Whisper 模型和用于笔记的本地 AI 模型，然后等待下载完成。",
+    "whisperLabel": "语音识别模型（Whisper）",
+    "summaryLabel": "笔记模型（本地 AI）",
+    "summaryHint": "选择并下载任意模型。Qwen2.5 7B 明显比 Gemma 更聪明，对俄语支持也更好——如果内存足够（约 6 GB）则推荐使用。",
+    "back": "返回",
+    "preparing": "准备中…",
+    "done": "完成"
+  }
+}

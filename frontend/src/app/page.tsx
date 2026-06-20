@@ -22,8 +22,10 @@ import { TranscriptRecovery } from '@/components/TranscriptRecovery';
 import { indexedDBService } from '@/services/indexedDBService';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 
 export default function Home() {
+  const { t } = useTranslation('recording');
   const [isRecording, setIsRecordingState] = useState(false);
   const IDLE_BAR_HEIGHTS = [
     '10px', '20px', '32px', '14px', '26px',
@@ -113,12 +115,12 @@ export default function Home() {
       const result = await recoverMeeting(meetingId);
 
       if (result.success) {
-        toast.success('Встреча восстановлена!', {
+        toast.success(t('recovery.restoredTitle'), {
           description: result.audioRecoveryStatus?.status === 'success'
-            ? 'Транскрипты и аудио восстановлены'
-            : 'Транскрипты восстановлены (аудио недоступно)',
+            ? t('recovery.restoredWithAudio')
+            : t('recovery.restoredWithoutAudio'),
           action: result.meetingId ? {
-            label: 'Открыть встречу',
+            label: t('recovery.openMeeting'),
             onClick: () => {
               router.push(`/meeting-details?id=${result.meetingId}`);
             }
@@ -139,8 +141,8 @@ export default function Home() {
         }
       }
     } catch (error) {
-      toast.error('Не удалось восстановить встречу', {
-        description: error instanceof Error ? error.message : 'Произошла неизвестная ошибка',
+      toast.error(t('recovery.failedTitle'), {
+        description: error instanceof Error ? error.message : t('recovery.unknownError'),
       });
       throw error;
     }

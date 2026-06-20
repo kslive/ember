@@ -1,0 +1,78 @@
+{
+  "ready": "准备录制",
+  "emptyHint": "开始录制 — 转录文字将在此处实时显示",
+  "shortcutHint": "开始录制",
+  "statusBar": {
+    "recording": "正在录制",
+    "paused": "已暂停"
+  },
+  "finalizing": "正在完成转录…",
+  "saving": "正在保存转录…",
+  "processingRecording": "正在处理录音…",
+  "validatingModel": "正在校验识别模型…",
+  "transcript": {
+    "title": "转录文字",
+    "live": "转录文字 · 实时",
+    "copy": "复制",
+    "copyTitle": "复制"
+  },
+  "transcriptionLanguageTooltip": "语言",
+  "loadMore": {
+    "loading": "加载中…",
+    "showing_other": "已显示 {{total}} 段中的 {{loaded}} 段"
+  },
+  "controls": {
+    "start": "开始录制",
+    "stop": "停止录制",
+    "pause": "暂停",
+    "resume": "继续录制",
+    "pausing": "正在暂停…",
+    "resuming": "正在继续…",
+    "stopping": "正在停止…",
+    "closeNotification": "关闭通知",
+    "deviceError": {
+      "microphoneTitle": "麦克风不可用",
+      "microphoneMessage": "无法访问您的麦克风。请检查：\n• 麦克风已连接\n• 应用已获得麦克风权限\n• 没有其他应用正在使用麦克风",
+      "systemAudioTitle": "系统音频不可用",
+      "systemAudioMessage": "无法捕获系统音频。请检查：\n• 已安装虚拟音频设备（如 BlackHole）\n• 应用已获得屏幕录制权限（macOS）\n• 系统音频已正确配置",
+      "permissionTitle": "需要权限",
+      "permissionMessage": "录制需要相关权限。请：\n• 在系统设置中授予麦克风访问权限\n• 授予屏幕录制权限以捕获系统音频（macOS）\n• 授予权限后重启应用",
+      "failedTitle": "录制失败",
+      "failedMessage": "无法开始录制。请检查您的音频设备设置后重试。"
+    }
+  },
+  "notification": {
+    "title": "录制已开始",
+    "description": "请告知参会者会议正在录制。",
+    "dontShowAgain": "不再显示",
+    "acknowledge": "已告知参会者"
+  },
+  "notify": {
+    "started": {
+      "title": "录制已开始",
+      "body": "Ember 正在录制会议。"
+    },
+    "stopped": {
+      "title": "录制已停止",
+      "bodyWithTitle": "“{{title}}”已保存。",
+      "body": "会议已保存。"
+    },
+    "summaryReady": {
+      "title": "摘要已生成",
+      "bodyWithTitle": "“{{title}}” — 摘要已生成。",
+      "body": "会议摘要已就绪。"
+    },
+    "summaryFailed": {
+      "title": "摘要生成失败",
+      "body": "详情请查看会议窗口。"
+    }
+  },
+  "recovery": {
+    "restoredTitle": "会议已恢复！",
+    "restoredWithAudio": "转录文字和音频已恢复",
+    "restoredWithoutAudio": "转录文字已恢复（音频不可用）",
+    "openMeeting": "打开会议",
+    "failedTitle": "恢复会议失败",
+    "unknownError": "发生未知错误"
+  }
+}

@@ -1,3 +1,5 @@
+import i18n from '@/i18n';
+
 export interface ModelInfo {
   name: string;
   path: string;
@@ -166,15 +168,15 @@ export function getModelPerformanceBadge(modelName: string): { label: string; co
   const type = getModelType(modelName);
   switch (type) {
     case 'f16':
-      return { label: 'Полная точность', color: 'blue' };
+      return { label: i18n.t('models:perfBadge.fullPrecision'), color: 'blue' };
     case 'q5_1':
-      return { label: 'Баланс+', color: 'green' };
+      return { label: i18n.t('models:perfBadge.balancePlus'), color: 'green' };
     case 'q5_0':
-      return { label: 'Баланс', color: 'green' };
+      return { label: i18n.t('models:perfBadge.balance'), color: 'green' };
     case 'q4_0':
-      return { label: 'Быстрая', color: 'orange' };
+      return { label: i18n.t('models:perfBadge.fast'), color: 'orange' };
     default:
-      return { label: 'Стандарт', color: 'gray' };
+      return { label: i18n.t('models:perfBadge.standard'), color: 'gray' };
   }
 }
 
@@ -182,47 +184,40 @@ export function getModelTagline(modelName: string, speed: ProcessingSpeed, accur
   const isQuantized = isQuantizedModel(modelName);
   const baseName = getModelBaseName(modelName);
 
-  let speedText = '';
-  switch (speed) {
-    case 'Very Fast':
-      speedText = 'Реальное время';
-      break;
-    case 'Fast':
-      speedText = 'Быстрая обработка';
-      break;
-    case 'Medium':
-      speedText = 'Средняя скорость';
-      break;
-    case 'Slow':
-      speedText = 'Медленнее';
-      break;
-  }
+  const speedKey: Record<ProcessingSpeed, string> = {
+    'Very Fast': 'veryFast',
+    'Fast': 'fast',
+    'Medium': 'medium',
+    'Slow': 'slow',
+  };
+  const speedText = speedKey[speed] ? i18n.t(`models:tagline.speed.${speedKey[speed]}`) : '';
 
-  let featureText = '';
+  let featureKey = '';
   if (baseName === 'large-v3') {
-    featureText = 'Самая точная';
+    featureKey = 'largeV3';
   } else if (baseName === 'large-v3-turbo') {
-    featureText = 'Точность и скорость';
+    featureKey = 'largeV3Turbo';
   } else if (baseName === 'medium') {
-    featureText = accuracy === 'High' ? 'Профессиональное качество' : 'Сбалансированное качество';
+    featureKey = accuracy === 'High' ? 'mediumHigh' : 'mediumStd';
   } else if (baseName === 'small') {
-    featureText = 'Хорошая точность';
+    featureKey = 'small';
   } else if (baseName === 'base') {
-    featureText = 'Сбалансированное качество';
+    featureKey = 'base';
   } else if (baseName === 'tiny') {
-    featureText = 'Самая быстрая';
+    featureKey = 'tiny';
   }
+  let featureText = featureKey ? i18n.t(`models:tagline.feature.${featureKey}`) : '';
 
   if (isQuantized) {
     const quantType = getModelType(modelName);
     if (quantType === 'q5_0') {
-      featureText += ', оптимизирована';
+      featureText += i18n.t('models:tagline.quant.optimized');
     } else if (quantType === 'q4_0') {
-      featureText += ', ультрабыстрая';
+      featureText += i18n.t('models:tagline.quant.ultraFast');
     }
   }
 
-  return `${speedText} • ${featureText}`;
+  return `${speedText}${i18n.t('models:tagline.sep')}${featureText}`;
 }
 
 export function groupModelsByBase(models: ModelInfo[]): Record<string, ModelInfo[]> {

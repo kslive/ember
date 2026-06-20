@@ -5,7 +5,7 @@ export type BetaFeatureKey = keyof BetaFeatures;
 export const DEFAULT_BETA_FEATURES: BetaFeatures = { importAndRetranscribe: false };
 
 export const BETA_FEATURE_NAMES: Record<keyof BetaFeatures, string> = {
-  importAndRetranscribe: 'Импорт и ретранскрипция',
+  importAndRetranscribe: 'Import & re-transcribe',
 };
 
 export const BETA_FEATURE_DESCRIPTIONS: Record<keyof BetaFeatures, string> = {

@@ -3,11 +3,14 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ModelCard, type ModelCardState } from '@/components/ui/model-card';
 import { RefreshCw, BadgeAlert, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLocale } from '@/contexts/LocaleContext';
+import { MODEL_LABELS } from '@/constants/modelLocalization';
 
 interface ModelInfo {
   name: string;
@@ -34,6 +37,8 @@ interface BuiltInModelManagerProps {
 }
 
 export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInModelManagerProps) {
+  const { t } = useTranslation('models');
+  const { locale } = useLocale();
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasFetched, setHasFetched] = useState<boolean>(false);
@@ -55,7 +60,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
       }
     } catch (error) {
       console.error('Failed to fetch built-in AI models:', error);
-      toast.error('Не удалось загрузить модели');
+      toast.error(t('builtin.loadFailed'));
     } finally {
       setIsLoading(false);
       setHasFetched(true);
@@ -113,7 +118,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
             return rest;
           });
           fetchModels();
-          toast.success(`Модель ${model} успешно скачана`);
+          toast.success(t('builtin.downloadComplete', { model }));
         }
 
         if (status === 'cancelled') {
@@ -188,7 +193,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
         return;
       }
 
-      toast.error(`Не удалось скачать ${modelName}`);
+      toast.error(t('builtin.downloadFailed', { model: modelName }));
 
       setDownloadingModels((prev) => {
         const newSet = new Set(prev);
@@ -203,7 +208,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
   const cancelDownload = async (modelName: string) => {
     try {
       await invoke('builtin_ai_cancel_download', { modelName });
-      toast.info(`Скачивание ${modelName} отменено`);
+      toast.info(t('builtin.downloadCancelled', { model: modelName }));
       setDownloadingModels((prev) => {
         const newSet = new Set(prev);
         newSet.delete(modelName);
@@ -217,11 +222,11 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
   const deleteModel = async (modelName: string) => {
     try {
       await invoke('builtin_ai_delete_model', { modelName });
-      toast.success(`Модель ${modelName} удалена`);
+      toast.success(t('builtin.deleted', { model: modelName }));
       fetchModels();
     } catch (error) {
       console.error('Failed to delete model:', error);
-      toast.error(`Не удалось удалить ${modelName}`);
+      toast.error(t('builtin.deleteFailed', { model: modelName }));
     }
   };
 
@@ -229,7 +234,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
     return (
       <div className="py-8 text-center text-[13px] text-fg-muted">
         <RefreshCw className="mx-auto mb-2 h-7 w-7 animate-spin text-accent-text" />
-        Загрузка моделей…
+        {t('loading')}
       </div>
     );
   }
@@ -238,7 +243,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
     return (
       <Alert>
         <AlertDescription>
-          Модели не найдены. Скачайте модель, чтобы начать работу со встроенным ИИ.
+          {t('empty')}
         </AlertDescription>
       </Alert>
     );
@@ -248,7 +253,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
     <div>
       <div className="mb-3">
         <h4 className="font-mono text-[11px] uppercase tracking-[0.1em] text-fg-faint">
-          Встроенные ИИ-модели
+          {t('builtinSection')}
         </h4>
       </div>
 
@@ -265,16 +270,23 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
 
           const lowerName = model.name.toLowerCase();
           const badge = lowerName.includes('qwen') && lowerName.includes('7b')
-            ? 'Рекомендуем'
+            ? t('badge.recommended')
             : lowerName.includes('gemma3:4b')
-              ? 'Баланс'
+              ? t('badge.balance')
               : undefined;
 
-          let meta = `${model.size_mb} МБ · ${model.context_size} токенов`;
+          const localizedLabel = MODEL_LABELS[locale]?.[model.name];
+          const displayName = localizedLabel?.displayName ?? model.display_name ?? model.name;
+          const description = localizedLabel?.description ?? model.description;
+
+          let meta = t('meta.sizeContext', { size: model.size_mb, tokens: model.context_size });
           if (modelIsDownloading && progressInfo?.totalMb > 0) {
-            meta = `${progressInfo.downloadedMb.toFixed(1)} МБ из ${progressInfo.totalMb.toFixed(1)} МБ`;
+            meta = t('meta.downloadProgress', {
+              downloaded: progressInfo.downloadedMb.toFixed(1),
+              total: progressInfo.totalMb.toFixed(1),
+            });
             if (progressInfo.speedMbps > 0) {
-              meta += ` · ${progressInfo.speedMbps.toFixed(1)} МБ/с`;
+              meta += ` · ${t('meta.downloadSpeed', { speed: progressInfo.speedMbps.toFixed(1) })}`;
             }
           }
 
@@ -289,8 +301,8 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
           return (
             <div key={model.name}>
               <ModelCard
-                name={model.display_name || model.name}
-                description={model.description}
+                name={displayName}
+                description={description}
                 meta={meta}
                 badge={badge}
                 state={cardState}
@@ -310,7 +322,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
                     className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[11px] text-fg-faint transition-colors hover:text-rec"
                   >
                     <X className="h-3 w-3" />
-                    Отмена
+                    {t('actions.cancel')}
                   </button>
                 </div>
               )}
@@ -321,7 +333,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
                   <span className="text-[12px] text-rec">
                     {typeof model.status === 'object' && 'Error' in model.status
                       ? (model.status as any).Error
-                      : 'Произошла ошибка'}
+                      : t('errors.generic')}
                   </span>
                   <Button
                     variant="outline"
@@ -332,7 +344,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
                     }}
                   >
                     <RefreshCw className="mr-2 h-4 w-4" />
-                    Повторить
+                    {t('actions.retry')}
                   </Button>
                 </div>
               )}
@@ -342,7 +354,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
                 <div className="mt-2 flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-[12px] text-rec">
                     <BadgeAlert className="h-3.5 w-3.5" />
-                    Файл повреждён. Повторите скачивание или удалите.
+                    {t('errors.corrupted')}
                   </span>
                   <div className="flex gap-2">
                     <Button
@@ -354,7 +366,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
                       }}
                     >
                       <RefreshCw className="mr-2 h-4 w-4" />
-                      Повторить
+                      {t('actions.retry')}
                     </Button>
                     <Button
                       variant="outline"
@@ -365,7 +377,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
                       }}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
-                      Удалить
+                      {t('actions.delete')}
                     </Button>
                   </div>
                 </div>
@@ -380,10 +392,10 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
                       deleteModel(model.name);
                     }}
                     className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[11px] text-fg-faint transition-colors hover:text-rec"
-                    title="Удалить модель"
+                    title={t('actions.deleteTitle')}
                   >
                     <Trash2 className="h-3 w-3" />
-                    Удалить
+                    {t('actions.delete')}
                   </button>
                 </div>
               )}

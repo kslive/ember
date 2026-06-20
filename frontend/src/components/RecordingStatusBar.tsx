@@ -3,12 +3,14 @@
 import { motion } from 'framer-motion';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface RecordingStatusBarProps {
   isPaused?: boolean;
 }
 
 export const RecordingStatusBar: React.FC<RecordingStatusBarProps> = ({ isPaused = false }) => {
+  const { t } = useTranslation('recording');
   const { activeDuration, isRecording } = useRecordingState();
 
   const [displaySeconds, setDisplaySeconds] = useState(0);
@@ -35,7 +37,7 @@ export const RecordingStatusBar: React.FC<RecordingStatusBarProps> = ({ isPaused
     >
       <div className={`w-[9px] h-[9px] rounded-full mr-[9px] ${isPaused ? 'bg-warn' : 'bg-rec animate-rec-pulse'}`} />
       <span className="font-sans text-[13px] font-medium">
-        {isPaused ? 'Пауза' : 'Идёт запись'}
+        {isPaused ? t('statusBar.paused') : t('statusBar.recording')}
       </span>
       <span className="font-mono text-[13px] tabular-nums ml-[9px]">
         {formatDuration(displaySeconds)}

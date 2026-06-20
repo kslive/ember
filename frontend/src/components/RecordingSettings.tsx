@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Switch } from '@/components/ui/switch';
 import { FolderOpen, AlertTriangle } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -19,6 +20,7 @@ interface RecordingSettingsProps {
 }
 
 export function RecordingSettings({ onSave }: RecordingSettingsProps) {
+  const { t } = useTranslation('recordingsettings');
   const [preferences, setPreferences] = useState<RecordingPreferences>({
     save_folder: '',
     auto_save: true,
@@ -105,13 +107,13 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
       const store = await Store.load('preferences.json');
       await store.set('show_recording_notification', enabled);
       await store.save();
-      toast.success('Настройка сохранена');
+      toast.success(t('toasts.notificationSaved'));
       await Analytics.track('recording_notification_preference_changed', {
         enabled: enabled.toString()
       });
     } catch (error) {
       console.error('Failed to save notification preference:', error);
-      toast.error('Не удалось сохранить настройку');
+      toast.error(t('toasts.notificationSaveFailed'));
     }
   };
 
@@ -121,14 +123,14 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
       await invoke('set_recording_preferences', { preferences: prefs });
       onSave?.(prefs);
 
-      const micDevice = prefs.preferred_mic_device || 'По умолчанию';
-      const systemDevice = prefs.preferred_system_device || 'По умолчанию';
-      toast.success("Настройки устройств сохранены", {
-        description: `Микрофон: ${micDevice}, Системный звук: ${systemDevice}`
+      const micDevice = prefs.preferred_mic_device || t('toasts.defaultDevice');
+      const systemDevice = prefs.preferred_system_device || t('toasts.defaultDevice');
+      toast.success(t('toasts.devicesSaved'), {
+        description: t('toasts.devicesSavedDescription', { mic: micDevice, system: systemDevice })
       });
     } catch (error) {
       console.error('Failed to save recording preferences:', error);
-      toast.error("Не удалось сохранить настройки устройств", {
+      toast.error(t('toasts.devicesSaveFailed'), {
         description: error instanceof Error ? error.message : String(error)
       });
     } finally {
@@ -150,9 +152,9 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
       {}
       <div className="flex items-center justify-between gap-5 bg-elevated border border-line rounded-[14px] py-[18px] px-[22px]">
         <div>
-          <div className="text-[15px] font-semibold text-fg">Сохранять аудиозаписи</div>
+          <div className="text-[15px] font-semibold text-fg">{t('autoSave.title')}</div>
           <div className="text-[13px] text-fg-muted mt-1">
-            Автоматически сохранять аудио при остановке записи
+            {t('autoSave.description')}
           </div>
         </div>
         <Switch
@@ -165,14 +167,14 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
       {}
       {preferences.auto_save && (
         <div className="bg-elevated border border-line rounded-[14px] py-[18px] px-[22px]">
-          <div className="text-[15px] font-semibold text-fg">Папка сохранения</div>
+          <div className="text-[15px] font-semibold text-fg">{t('saveFolder.title')}</div>
           <div className="text-[13px] text-fg-muted mt-1 mb-4">
-            Файлы {preferences.file_format.toUpperCase()} с отметкой времени: <code className="font-mono text-fg">recording_YYYYMMDD_HHMMSS.{preferences.file_format}</code>
+            {t('saveFolder.description', { format: preferences.file_format.toUpperCase() })}<code className="font-mono text-fg">{t('saveFolder.filenameExample', { format: preferences.file_format })}</code>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0 h-[42px] flex items-center px-3.5 rounded-[11px] bg-surface border border-line">
               <span className="text-[12.5px] text-fg-muted break-all font-mono truncate">
-                {preferences.save_folder || 'Папка по умолчанию'}
+                {preferences.save_folder || t('saveFolder.defaultFolder')}
               </span>
             </div>
             <button
@@ -180,7 +182,7 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
               className="shrink-0 inline-flex items-center gap-[7px] px-4 h-[42px] text-[13px] font-medium rounded-[11px] bg-elevated border border-line-strong text-fg hover:bg-fg/[0.04] transition-colors"
             >
               <FolderOpen className="w-3.5 h-3.5" />
-              Открыть
+              {t('saveFolder.open')}
             </button>
           </div>
         </div>
@@ -194,7 +196,7 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
         >
           <AlertTriangle className="w-[17px] h-[17px] shrink-0 mt-px text-warn" strokeWidth={1.8} />
           <span className="text-[13px] leading-[1.55] text-warn">
-            Запись аудио отключена. Включите «Сохранять аудиозаписи», чтобы автоматически сохранять аудио встреч.
+            {t('disabledAlert')}
           </span>
         </div>
       )}
@@ -202,9 +204,9 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
       {}
       <div className="flex items-center justify-between gap-5 bg-elevated border border-line rounded-[14px] py-[18px] px-[22px]">
         <div>
-          <div className="text-[15px] font-semibold text-fg">Уведомление о начале записи</div>
+          <div className="text-[15px] font-semibold text-fg">{t('notification.title')}</div>
           <div className="text-[13px] text-fg-muted mt-1">
-            Показывать напоминание сообщить участникам о начале записи
+            {t('notification.description')}
           </div>
         </div>
         <Switch
@@ -215,9 +217,9 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
 
       {}
       <div className="bg-elevated border border-line rounded-[14px] py-[18px] px-[22px]">
-        <h4 className="text-[15px] font-semibold text-fg">Аудиоустройства</h4>
+        <h4 className="text-[15px] font-semibold text-fg">{t('devices.title')}</h4>
         <p className="text-[13px] text-fg-muted mt-1 mb-4">
-          Выберите предпочитаемые микрофон и устройство системного звука. Они будут выбраны автоматически при запуске новых записей.
+          {t('devices.description')}
         </p>
 
         <DeviceSelection

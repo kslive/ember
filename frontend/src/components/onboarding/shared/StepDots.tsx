@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 interface StepDotsProps {
   current: number;
@@ -18,6 +19,7 @@ export function StepDots({
   onStepClick,
   className,
 }: StepDotsProps) {
+  const { t } = useTranslation('onboarding');
   const steps = Array.from({ length: total }, (_, i) => i + 1);
 
   return (
@@ -35,7 +37,7 @@ export function StepDots({
               layout
               onClick={() => isClickable && onStepClick?.(step)}
               disabled={!isClickable}
-              aria-label={`Шаг ${step}`}
+              aria-label={t('stepDotAria', { step })}
               aria-current={isActive ? 'step' : undefined}
               animate={{
                 width: isActive ? 18 : 6,
@@ -63,7 +65,7 @@ export function StepDots({
                 exit={{ opacity: 0, y: -2 }}
                 transition={DOT_TRANSITION}
               >
-                шаг {current} из {total}
+                {t('stepShort', { current, total })}
               </motion.span>
             </AnimatePresence>
           </span>

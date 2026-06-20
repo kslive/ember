@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Mic, Volume2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { PermissionRow } from '../shared';
@@ -8,6 +9,7 @@ import { useOnboarding } from '@/contexts/OnboardingContext';
 
 export function PermissionsStep() {
   const { setPermissionStatus, setPermissionsSkipped, permissions, completeOnboarding } = useOnboarding();
+  const { t } = useTranslation('onboarding');
   const [pending, setPending] = useState<null | 'microphone' | 'systemAudio'>(null);
 
   const checkPermissions = useCallback(async () => {
@@ -25,7 +27,7 @@ export function PermissionsStep() {
       try {
         await invoke('open_system_settings');
       } catch {
-        alert('Разрешите доступ к микрофону в Системных настройках → Конфиденциальность и безопасность → Микрофон');
+        alert(t('permissions.microphone.settingsAlert'));
       }
       return;
     }
@@ -54,7 +56,7 @@ export function PermissionsStep() {
       try {
         await invoke('open_system_settings');
       } catch {
-        alert('Разрешите захват аудио в Системных настройках → Конфиденциальность и безопасность → Захват аудио');
+        alert(t('permissions.systemAudio.settingsAlert'));
       }
       return;
     }
@@ -100,9 +102,9 @@ export function PermissionsStep() {
 
   return (
     <OnboardingContainer
-      title="Доступы"
-      description="Ember нужен доступ к микрофону и системному звуку для записи встреч"
-      step={4}
+      title={t('permissions.title')}
+      description={t('permissions.description')}
+      step={5}
       hideProgress={true}
       className="max-w-lg"
     >
@@ -112,8 +114,8 @@ export function PermissionsStep() {
           {}
           <PermissionRow
             icon={<Mic className="w-[19px] h-[19px]" strokeWidth={1.8} />}
-            title="Микрофон"
-            description="Требуется для записи вашего голоса во время встреч"
+            title={t('permissions.microphone.title')}
+            description={t('permissions.microphone.description')}
             status={permissions.microphone}
             isPending={pending === 'microphone'}
             onAction={handleMicrophoneAction}
@@ -122,8 +124,8 @@ export function PermissionsStep() {
           {}
           <PermissionRow
             icon={<Volume2 className="w-[19px] h-[19px]" strokeWidth={1.8} />}
-            title="Системный звук"
-            description="Нажмите «Разрешить», чтобы предоставить доступ к захвату аудио"
+            title={t('permissions.systemAudio.title')}
+            description={t('permissions.systemAudio.description')}
             status={permissions.systemAudio}
             isPending={pending === 'systemAudio'}
             onAction={handleSystemAudioAction}
@@ -137,19 +139,19 @@ export function PermissionsStep() {
             disabled={!allPermissionsGranted}
             className="h-[46px] w-full text-[15px]"
           >
-            Завершить настройку
+            {t('permissions.finish')}
           </Button>
 
           <button
             onClick={handleSkip}
             className="font-mono text-[11px] text-fg-faint transition-colors hover:text-fg-muted"
           >
-            Сделаю это позже
+            {t('permissions.later')}
           </button>
 
           {!allPermissionsGranted && (
             <p className="text-center text-[12px] text-fg-faint">
-              Без доступов запись работать не будет. Их можно предоставить позже в настройках.
+              {t('permissions.noAccessNote')}
             </p>
           )}
         </div>
