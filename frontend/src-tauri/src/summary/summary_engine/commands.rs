@@ -288,8 +288,9 @@ pub async fn builtin_ai_get_available_summary_model<R: Runtime>(
         .filter(|m| matches!(m.status, crate::summary::summary_engine::model_manager::ModelStatus::Available))
         .max_by_key(|m| {
             match m.name.as_str() {
-                "gemma3:4b" => 2,
-                "gemma3:1b" => 1,
+                "qwen3:8b" => 3,
+                "qwen3:4b" => 2,
+                "qwen3:1.7b" => 1,
                 _ => 0,
             }
         })
@@ -330,17 +331,13 @@ pub async fn builtin_ai_get_recommended_model() -> Result<String, String> {
 
     let system_ram_gb = get_system_ram_gb()?;
 
-    let is_macos = cfg!(target_os = "macos");
-
-    log::info!("System RAM detected: {} GB, Platform: {}", system_ram_gb, if is_macos { "macOS" } else { "other" });
-
-    let recommended = if is_macos && system_ram_gb > 16 {
-        "gemma3:4b"
+    let recommended = if system_ram_gb < 16 {
+        "qwen3:4b"
     } else {
-        "gemma3:1b"
+        "qwen3:8b"
     };
 
-    log::info!("Recommended summary model: {} (macOS={}, {}GB RAM)", recommended, is_macos, system_ram_gb);
+    log::info!("Recommended summary model: {} ({}GB RAM)", recommended, system_ram_gb);
     Ok(recommended.to_string())
 }
 

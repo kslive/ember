@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { listen } from '@tauri-apps/api/event';
 import { RecordingControls } from '@/components/RecordingControls';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { usePermissionCheck } from '@/hooks/usePermissionCheck';
@@ -155,48 +154,73 @@ export default function Home() {
     }
   };
 
-  const targetLevelRef = useRef(0);
   useEffect(() => {
-    if (!isRecording) {
+    if (!recordingState.isRecording) {
       setBarHeights(IDLE_BAR_HEIGHTS);
-      targetLevelRef.current = 0;
       return;
     }
 
-    const unlistenP = listen<{ microphone?: { rms?: number; peak?: number }; system?: { rms?: number; peak?: number } }>(
-      'audio-levels',
-      (event) => {
-        const mic = event.payload?.microphone;
-        const sys = event.payload?.system;
-        const m = mic?.peak ?? mic?.rms ?? 0;
-        const s = sys?.peak ?? sys?.rms ?? 0;
-        const level = Math.max(m, s);
-        targetLevelRef.current = Math.min(1, Math.pow(level, 0.55) * 2.4);
-      },
-    );
+    const BARS = 15;
+    const cur = new Array<number>(BARS).fill(0.15);
+    const px = (v: number) => `${Math.round(Math.max(6, Math.min(40, 6 + v * 34)))}px`;
 
-    const BAR_WEIGHTS = [0.45, 0.6, 0.85, 0.55, 0.75, 1.0, 0.6, 0.8, 0.4, 0.7, 0.9, 0.5, 0.8, 0.4, 0.65];
     let raf = 0;
-    const cur = new Array<number>(BAR_WEIGHTS.length).fill(0);
+    let stopped = false;
+    let stream: MediaStream | null = null;
+    let audioCtx: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let freq: Uint8Array<ArrayBuffer> | null = null;
+
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (stopped) { stream.getTracks().forEach((tr) => tr.stop()); return; }
+        const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+        audioCtx = new Ctx();
+        await audioCtx.resume().catch(() => {});
+        const node = audioCtx.createAnalyser();
+        node.fftSize = 64;
+        node.smoothingTimeConstant = 0.75;
+        audioCtx.createMediaStreamSource(stream).connect(node);
+        freq = new Uint8Array(node.frequencyBinCount);
+        analyser = node;
+      } catch (e) {
+        console.warn('[rec-anim] mic visualizer unavailable, using synthetic animation:', e);
+      }
+    })();
+
+    const start = performance.now();
     const tick = () => {
-      const t = targetLevelRef.current;
-      const px = (v: number) => `${Math.max(10, Math.min(38, 10 + v * 28))}px`;
-      const next = cur.map((c, i) => {
-        const target = t * BAR_WEIGHTS[i];
-        const v = c + (target - c) * 0.35;
-        cur[i] = v;
-        return px(v);
-      });
+      let next: string[];
+      if (analyser && freq) {
+        analyser.getByteFrequencyData(freq);
+        next = cur.map((c, i) => {
+          const target = (freq![i + 1] ?? 0) / 255;
+          const v = c + (target - c) * 0.45;
+          cur[i] = v;
+          return px(v);
+        });
+      } else {
+        const tms = (performance.now() - start) / 1000;
+        next = cur.map((c, i) => {
+          const target = 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(tms * (4 + (i % 5) * 0.7) + i * 0.9));
+          const v = c + (target - c) * 0.3;
+          cur[i] = v;
+          return px(v);
+        });
+      }
       setBarHeights(next);
-      raf = window.requestAnimationFrame(tick);
+      raf = requestAnimationFrame(tick);
     };
-    raf = window.requestAnimationFrame(tick);
+    raf = requestAnimationFrame(tick);
 
     return () => {
+      stopped = true;
       cancelAnimationFrame(raf);
-      unlistenP.then((u) => u()).catch(() => {});
+      if (stream) stream.getTracks().forEach((tr) => tr.stop());
+      if (audioCtx) audioCtx.close().catch(() => {});
     };
-  }, [isRecording]);
+  }, [recordingState.isRecording]);
 
   const isProcessingStop = status === RecordingStatus.PROCESSING_TRANSCRIPTS || isProcessing;
 

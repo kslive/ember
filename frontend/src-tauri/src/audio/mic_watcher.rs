@@ -3,11 +3,19 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+#[cfg(target_os = "macos")]
+use std::sync::Mutex;
+#[cfg(target_os = "macos")]
+use std::time::Instant;
+
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime};
 
 #[cfg(target_os = "macos")]
 use cidre::core_audio as ca;
+
+#[cfg(target_os = "macos")]
+use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -24,30 +32,122 @@ struct MicUsagePayload {
 }
 
 #[cfg(target_os = "macos")]
+const HELPER_NAME_FRAGMENTS: [&str; 3] = ["ffmpeg", "llama-helper", "mlx-helper"];
+
+#[cfg(target_os = "macos")]
+static DIAG_STATE: Mutex<Option<(Vec<i32>, Instant)>> = Mutex::new(None);
+
+#[cfg(target_os = "macos")]
+fn is_self_or_descendant(sys: &System, pid: i32, self_pid: i32) -> bool {
+    if pid == self_pid {
+        return true;
+    }
+    let mut current = Pid::from_u32(pid as u32);
+    for _ in 0..10 {
+        let parent = match sys.process(current).and_then(|p| p.parent()) {
+            Some(parent) => parent,
+            None => return false,
+        };
+        if parent.as_u32() as i32 == self_pid {
+            return true;
+        }
+        if parent == current {
+            return false;
+        }
+        current = parent;
+    }
+    false
+}
+
+#[cfg(target_os = "macos")]
 fn list_external_input_pids(self_pid: i32) -> Vec<i32> {
     let processes = match ca::System::processes() {
         Ok(p) => p,
         Err(e) => {
-            log::warn!("mic_watcher: System::processes failed: {:?}", e);
+            log::warn!("[mic_watcher] System::processes failed: {:?}", e);
             return Vec::new();
         }
     };
 
+    let sys = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::new()),
+    );
+
     let mut external = Vec::new();
+    let mut diag: Vec<(i32, String)> = Vec::new();
+
     for proc in processes {
         let pid = match proc.pid() {
             Ok(p) => p,
             Err(_) => continue,
         };
-        if pid as i32 == self_pid || pid == 0 {
+        if pid == 0 {
             continue;
         }
-        match proc.is_running_input() {
-            Ok(true) => external.push(pid as i32),
-            _ => {}
+        if !matches!(proc.is_running_input(), Ok(true)) {
+            continue;
         }
+
+        if is_self_or_descendant(&sys, pid, self_pid) {
+            continue;
+        }
+
+        let name = sys
+            .process(Pid::from_u32(pid as u32))
+            .map(|p| p.name().to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let name_lower = name.to_lowercase();
+        if HELPER_NAME_FRAGMENTS
+            .iter()
+            .any(|frag| name_lower.contains(frag))
+        {
+            continue;
+        }
+
+        external.push(pid as i32);
+        diag.push((pid as i32, name));
     }
+
+    log_external_diagnostics(&external, &diag);
     external
+}
+
+#[cfg(target_os = "macos")]
+fn log_external_diagnostics(external: &[i32], diag: &[(i32, String)]) {
+    let mut guard = match DIAG_STATE.lock() {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+
+    let now = Instant::now();
+    let should_log = match guard.as_ref() {
+        Some((last_set, last_time)) => {
+            last_set != external || now.duration_since(*last_time) >= Duration::from_secs(5)
+        }
+        None => true,
+    };
+
+    if !should_log {
+        return;
+    }
+
+    if external.is_empty() {
+        log::warn!("[mic_watcher] no external input processes (after self/helper exclusion)");
+    } else {
+        let listed = diag
+            .iter()
+            .map(|(pid, name)| format!("{} (pid {})", name, pid))
+            .collect::<Vec<_>>()
+            .join(", ");
+        log::warn!(
+            "[mic_watcher] external input processes counted ({}): {}",
+            external.len(),
+            listed
+        );
+    }
+
+    *guard = Some((external.to_vec(), now));
 }
 
 #[cfg(not(target_os = "macos"))]

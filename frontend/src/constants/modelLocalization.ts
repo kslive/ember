@@ -19,65 +19,51 @@ export const MODEL_LABELS: Record<
   Record<string, { displayName: string; description: string }>
 > = {
   en: {
-    'gemma3:1b': {
-      displayName: 'Gemma 3 1B (Fast)',
+    'qwen3:1.7b': {
+      displayName: 'Qwen3 1.7B (Fast)',
       description:
-        'The fastest. Runs on any hardware (~1GB RAM). Great for quick notes.',
+        'The fastest. Runs on any Apple Silicon Mac (~2GB RAM). Great for quick notes.',
     },
-    'gemma3:4b': {
-      displayName: 'Gemma 3 4B (Balanced)',
-      description: 'A balance of quality and speed. Needs ~3.5GB RAM.',
-    },
-    'qwen2.5:7b': {
-      displayName: 'Qwen2.5 7B (Smart)',
+    'qwen3:4b': {
+      displayName: 'Qwen3 4B (Balanced)',
       description:
-        'Noticeably smarter than Gemma 4B: strong multilingual quality and instruction following. Needs ~6GB RAM.',
+        'A balance of quality and speed. Needs ~6GB RAM.',
     },
-    'qwen2.5:14b': {
-      displayName: 'Qwen2.5 14B (Maximum)',
+    'qwen3:8b': {
+      displayName: 'Qwen3 8B (Maximum)',
       description:
-        'Best quality for 16GB. Slower and hungrier (~10GB RAM), but the most accurate summaries.',
+        'Recommended. Best quality and the most accurate summaries. Needs ~10GB RAM.',
     },
   },
   ru: {
-    'gemma3:1b': {
-      displayName: 'Gemma 3 1B (Быстрая)',
+    'qwen3:1.7b': {
+      displayName: 'Qwen3 1.7B (Быстрая)',
       description:
-        'Самая быстрая. Работает на любом железе (~1GB RAM). Хороша для быстрых конспектов.',
+        'Самая быстрая. Работает на любом Mac с Apple Silicon (~2GB RAM). Хороша для быстрых конспектов.',
     },
-    'gemma3:4b': {
-      displayName: 'Gemma 3 4B (Сбалансированная)',
-      description: 'Баланс качества и скорости. Нужно ~3.5GB RAM.',
+    'qwen3:4b': {
+      displayName: 'Qwen3 4B (Сбалансированная)',
+      description: 'Баланс качества и скорости. Нужно ~6GB RAM.',
     },
-    'qwen2.5:7b': {
-      displayName: 'Qwen2.5 7B (Умная)',
+    'qwen3:8b': {
+      displayName: 'Qwen3 8B (Максимум)',
       description:
-        'Заметно умнее Gemma 4B: лучше русский и следование инструкциям. Нужно ~6GB RAM.',
-    },
-    'qwen2.5:14b': {
-      displayName: 'Qwen2.5 14B (Максимум)',
-      description:
-        'Лучшее качество для 16GB. Медленнее и прожорливее (~10GB RAM), но самые точные саммари.',
+        'Рекомендуется. Лучшее качество и самые точные саммари. Нужно ~10GB RAM.',
     },
   },
   zh: {
-    'gemma3:1b': {
-      displayName: 'Gemma 3 1B（快速）',
-      description: '最快的模型。可在任何硬件上运行（约 1GB 内存）。适合快速记录要点。',
+    'qwen3:1.7b': {
+      displayName: 'Qwen3 1.7B（快速）',
+      description: '最快的模型。可在任何 Apple Silicon Mac 上运行（约 2GB 内存）。适合快速记录要点。',
     },
-    'gemma3:4b': {
-      displayName: 'Gemma 3 4B（均衡）',
-      description: '质量与速度的平衡。需要约 3.5GB 内存。',
+    'qwen3:4b': {
+      displayName: 'Qwen3 4B（均衡）',
+      description: '质量与速度的平衡。需要约 6GB 内存。',
     },
-    'qwen2.5:7b': {
-      displayName: 'Qwen2.5 7B（智能）',
+    'qwen3:8b': {
+      displayName: 'Qwen3 8B（极致）',
       description:
-        '明显比 Gemma 4B 更聪明：多语言质量出色，指令遵循能力更强。需要约 6GB 内存。',
-    },
-    'qwen2.5:14b': {
-      displayName: 'Qwen2.5 14B（极致）',
-      description:
-        '16GB 内存下的最佳质量。速度更慢、占用更高（约 10GB 内存），但生成的摘要最准确。',
+        '推荐。最佳质量，生成的摘要最准确。需要约 10GB 内存。',
     },
   },
 };

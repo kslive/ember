@@ -82,6 +82,7 @@ pub fn trigger_audio_permission() -> Result<bool> {
 
     info!("[trigger_audio_permission] Stream played successfully - permission granted");
 
+    let _ = stream.pause();
     drop(stream);
 
     Ok(true)

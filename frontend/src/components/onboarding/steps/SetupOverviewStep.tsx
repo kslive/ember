@@ -14,8 +14,8 @@ import {
 export function SetupOverviewStep() {
   const { goNext } = useOnboarding();
   const { t } = useTranslation('onboarding');
-  const [recommendedModel, setRecommendedModel] = useState<string>('gemma3:1b');
-  const [modelSize, setModelSize] = useState<string>('~806 MB');
+  const [recommendedModel, setRecommendedModel] = useState<string>('qwen3:8b');
+  const [modelSize, setModelSize] = useState<string>('~4.7 GB');
   const [isMac, setIsMac] = useState(false);
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export function SetupOverviewStep() {
       try {
         const model = await invoke<string>('builtin_ai_get_recommended_model');
         setRecommendedModel(model);
-        setModelSize(model === 'gemma3:4b' ? '~2.5 GB' : '~806 MB');
+        setModelSize(model === 'qwen3:8b' ? '~4.7 GB' : model === 'qwen3:4b' ? '~2.4 GB' : '~1.05 GB');
       } catch (error) {
         console.error('Failed to get recommended model:', error);
       }

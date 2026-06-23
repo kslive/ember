@@ -48,10 +48,10 @@ function displayMeetingTitle(title: string, t: TFunction): string {
   const raw = (title || '').trim();
   const isAuto =
     raw === '' ||
-    /^meeting\b/i.test(raw) ||
-    /^(запись|recording|录音)[\s_-]*\d/i.test(raw) ||
+    /^(recording|запись|录音)[\s_-]*\d/i.test(raw) ||
     /^(\+\s*)?new call$/i.test(raw) ||
-    raw === 'intro-call';
+    raw === 'intro-call' ||
+    /^meeting notes?$/i.test(raw);
   return isAuto ? t('untitled') : raw;
 }
 
@@ -240,7 +240,12 @@ export default function PageContent({
             title={displayMeetingTitle(meetingData.meetingTitle, t)}
             isEditing={meetingData.isEditingTitle}
             onStartEditing={() => meetingData.setIsEditingTitle(true)}
-            onFinishEditing={() => meetingData.setIsEditingTitle(false)}
+            onFinishEditing={async () => {
+              meetingData.setIsEditingTitle(false);
+              if (meetingData.isTitleDirty) {
+                await meetingData.handleSaveMeetingTitle();
+              }
+            }}
             onChange={meetingData.handleTitleChange}
           />
           <span className="font-mono text-[12px] text-fg-faint">

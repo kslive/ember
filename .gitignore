@@ -92,3 +92,6 @@ _design_reference/
 
 # Claude Code local config
 .claude/
+frontend/src-tauri/mlx-swift_Cmlx.bundle
+frontend/src-tauri/binaries/mlx-helper-aarch64-apple-darwin
+frontend/src-tauri/mlx-helper/.build/

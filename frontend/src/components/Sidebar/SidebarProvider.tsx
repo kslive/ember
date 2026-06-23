@@ -152,6 +152,33 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   }, [serverAddress, fetchMeetings]);
 
   useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const setup = async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      unlisten = await listen<{ meetingId: string; title: string }>(
+        'meeting-title-updated',
+        (event) => {
+          const { meetingId, title } = event.payload;
+          setMeetings(prev =>
+            prev.map(m => (m.id === meetingId ? { ...m, title } : m))
+          );
+        }
+      );
+    };
+
+    setup();
+
+    const onFocus = () => { fetchMeetings(); };
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      if (unlisten) unlisten();
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [fetchMeetings]);
+
+  useEffect(() => {
     const fetchSettings = async () => {
       setServerAddress('http://localhost:5167');
       setTranscriptServerAddress('http://127.0.0.1:8178/stream');

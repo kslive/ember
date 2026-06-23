@@ -7,7 +7,8 @@
     "general": "常规",
     "recording": "录制",
     "transcription": "转录",
-    "summary": "摘要"
+    "summary": "摘要",
+    "updates": "更新"
   },
   "chrome": {
     "title": "设置",

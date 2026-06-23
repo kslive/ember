@@ -54,10 +54,10 @@ function cleanMeetingTitle(t: string): string {
   const raw = (t || '').trim();
   const isAutoName =
     raw === '' ||
-    /^meeting\b/i.test(raw) ||
-    /^(запись|recording|录音)[\s_-]*\d/i.test(raw) ||
+    /^(recording|запись|录音)[\s_-]*\d/i.test(raw) ||
     /^(\+\s*)?new call$/i.test(raw) ||
-    raw === 'intro-call';
+    raw === 'intro-call' ||
+    /^meeting notes?$/i.test(raw);
   if (isAutoName) return i18n.t('sidebar:untitledMeeting');
   const cleaned = raw.replace(/^(?:[\p{Extended_Pictographic}‍️#\s—·-])+/u, '').trim();
   return cleaned || i18n.t('sidebar:untitledMeeting');

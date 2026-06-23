@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "Ember",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "identifier": "com.kslff.ember",
     "build": {
         "frontendDist": "../out",
@@ -22,7 +22,8 @@
                 "fullscreen": false,
                 "decorations": true,
                 "titleBarStyle": "Overlay",
-                "hiddenTitle": true
+                "hiddenTitle": true,
+                "visible": false
             }
         ],
         "macOSPrivateApi": true,
@@ -64,12 +65,15 @@
                         "core:menu:default",
                         "core:tray:default",
                         "core:window:allow-set-title",
+   "core:window:allow-show",
                         "store:default",
                         "dialog:default",
                         "dialog:allow-open",
                         "notification:default",
                         "notification:allow-is-permission-granted",
                         "process:default",
+                        "process:allow-restart",
+                        "updater:default",
                         {
                             "identifier": "fs:scope",
                             "allow": [
@@ -85,6 +89,7 @@
     },
     "bundle": {
         "active": true,
+        "createUpdaterArtifacts": true,
         "targets": [
             "deb",
             "appimage",
@@ -99,10 +104,11 @@
             "icons/icon.ico"
         ],
         "resources": [
-            "templates/*.json"
+            "templates/*.json",
+            "mlx-swift_Cmlx.bundle"
         ],
         "externalBin": [
-            "binaries/llama-helper",
+            "binaries/mlx-helper",
             "binaries/ffmpeg"
         ],
         "macOS": {
@@ -114,5 +120,12 @@
             "signCommand": "powershell -ExecutionPolicy Bypass -File scripts/sign-windows.ps1 -FilePath %1"
         }
     },
-    "plugins": {}
+    "plugins": {
+        "updater": {
+            "endpoints": [
+                "https://github.com/kslive/ember/releases/latest/download/latest.json"
+            ],
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc2OEI4RkRGOUFGNTE3NTgKUldSWUYvV2EzNCtMZGx6SVVETTQ0a1lLTzRvSi9qUHR3Q1hlU3lFemhjQ0xNdUV3eEJkMyt4QWEK"
+        }
+    }
 }

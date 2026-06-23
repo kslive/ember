@@ -193,8 +193,13 @@ impl SummaryService {
 
         let app_data_dir = _app.path().app_data_dir().ok();
 
-        // Generate the summary in the current UI language.
-        let locale = crate::current_locale(&_app);
+        let transcription_pref = crate::get_language_preference_internal();
+        let locale = match transcription_pref.as_deref() {
+            Some("auto-translate") => "en".to_string(),
+            Some(code) if !code.is_empty() && code != "auto" => code.to_string(),
+            _ => crate::detect_transcript_language(&text)
+                .unwrap_or_else(|| crate::current_locale(&_app)),
+        };
 
         let client = reqwest::Client::new();
         let result = generate_meeting_summary(
@@ -267,8 +272,9 @@ impl SummaryService {
 
                         let _ = &time_str;
                         let app_title = {
+                            let max_len = 100;
                             let t = topic.trim();
-                            if t.chars().count() <= 15 {
+                            if t.chars().count() <= max_len {
                                 t.to_string()
                             } else {
                                 let mut out = String::new();
@@ -278,13 +284,13 @@ impl SummaryService {
                                     } else {
                                         format!("{} {}", out, word)
                                     };
-                                    if cand.chars().count() > 15 {
+                                    if cand.chars().count() > max_len {
                                         break;
                                     }
                                     out = cand;
                                 }
                                 if out.is_empty() {
-                                    t.chars().take(15).collect()
+                                    t.chars().take(max_len).collect()
                                 } else {
                                     out
                                 }

@@ -7,7 +7,8 @@
     "general": "General",
     "recording": "Recording",
     "transcription": "Transcription",
-    "summary": "Summary"
+    "summary": "Summary",
+    "updates": "Updates"
   },
   "chrome": {
     "title": "Settings",

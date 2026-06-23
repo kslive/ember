@@ -46,6 +46,7 @@ pub mod parakeet_engine;
 pub mod state;
 pub mod summary;
 pub mod tray;
+pub mod updater;
 pub mod utils;
 pub mod whisper_engine;
 
@@ -400,6 +401,35 @@ pub fn get_language_preference_internal() -> Option<String> {
     LANGUAGE_PREFERENCE.lock().ok().map(|lang| lang.clone())
 }
 
+pub fn detect_transcript_language(text: &str) -> Option<String> {
+    let sample: String = text.chars().take(1000).collect();
+    let trimmed = sample.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let info = whatlang::detect(trimmed)?;
+    if info.confidence() <= 0.5 {
+        return None;
+    }
+
+    use whatlang::Lang;
+    let code = match info.lang() {
+        Lang::Rus => "ru",
+        Lang::Cmn => "zh",
+        Lang::Eng => "en",
+        Lang::Deu => "de",
+        Lang::Spa => "es",
+        Lang::Fra => "fr",
+        Lang::Jpn => "ja",
+        Lang::Kor => "ko",
+        Lang::Por => "pt",
+        Lang::Ita => "it",
+        other => other.code(),
+    };
+    Some(code.to_string())
+}
+
 pub fn run() {
     log::set_max_level(log::LevelFilter::Info);
 
@@ -415,6 +445,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(whisper_engine::parallel_commands::ParallelProcessorState::new())
         .manage(Arc::new(RwLock::new(
             None::<notifications::manager::NotificationManager<tauri::Wry>>,
@@ -426,6 +457,13 @@ pub fn run() {
 
             if let Err(e) = tray::create_tray(_app.handle()) {
                 log::error!("Failed to create system tray: {}", e);
+            }
+
+            if let Some(win) = _app.get_webview_window("main") {
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
+                    let _ = win.show();
+                });
             }
 
             // Re-localize the tray menu when the user switches UI language.
@@ -518,6 +556,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             save_summary_md,
             open_in_obsidian,
+            updater::check_update,
+            updater::install_update,
             start_recording,
             stop_recording,
             is_recording,

@@ -20,6 +20,8 @@ use super::sidecar::SidecarManager;
 enum Request {
     Generate {
         prompt: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        system: Option<String>,
         max_tokens: Option<i32>,
         context_size: Option<u32>,
         model_path: Option<String>,
@@ -66,7 +68,7 @@ fn get_cached_model_path(app_data_dir: &PathBuf, model_name: &str) -> Result<Pat
         let cache = MODEL_PATH_CACHE.read().unwrap();
         if let Some(path) = cache.get(model_name) {
 
-            if path.exists() {
+            if models::is_model_dir_valid(path) {
                 return Ok(path.clone());
             }
         }
@@ -75,16 +77,16 @@ fn get_cached_model_path(app_data_dir: &PathBuf, model_name: &str) -> Result<Pat
     let mut cache = MODEL_PATH_CACHE.write().unwrap();
 
     if let Some(path) = cache.get(model_name) {
-        if path.exists() {
+        if models::is_model_dir_valid(path) {
             return Ok(path.clone());
         }
     }
 
     let model_path = models::get_model_path(app_data_dir, model_name)?;
 
-    if !model_path.exists() {
+    if !models::is_model_dir_valid(&model_path) {
         return Err(anyhow!(
-            "Model file not found: {}. Please download the model '{}' first.",
+            "Model directory not found or incomplete: {}. Please download the model '{}' first.",
             model_path.display(),
             model_name
         ));
@@ -116,9 +118,6 @@ pub async fn generate_with_builtin(
 
     let model_path = get_cached_model_path(app_data_dir, model_name)?;
 
-    let formatted_prompt =
-        models::format_prompt(&model_def.template, system_prompt, user_prompt)?;
-
     let manager = {
         let mut global_manager = SIDECAR_MANAGER.lock().await;
         if global_manager.is_none() {
@@ -137,8 +136,15 @@ pub async fn generate_with_builtin(
         }
     }
 
+    let system = if system_prompt.is_empty() {
+        None
+    } else {
+        Some(system_prompt.to_string())
+    };
+
     let request = Request::Generate {
-        prompt: formatted_prompt,
+        prompt: user_prompt.to_string(),
+        system,
         max_tokens: Some(models::DEFAULT_MAX_TOKENS),
         context_size: Some(model_def.context_size),
         model_path: Some(model_path.to_string_lossy().to_string()),
@@ -244,20 +250,40 @@ mod tests {
     fn test_request_serialization() {
         let request = Request::Generate {
             prompt: "test prompt".to_string(),
+            system: Some("test system".to_string()),
             max_tokens: Some(512),
             context_size: Some(2048),
-            model_path: Some("/path/to/model.gguf".to_string()),
-            temperature: Some(1.0),
-            top_k: Some(64),
-            top_p: Some(0.95),
-            stop_tokens: Some(vec!["<end_of_turn>".to_string()]),
+            model_path: Some("/path/to/model-dir".to_string()),
+            temperature: Some(0.7),
+            top_k: Some(20),
+            top_p: Some(0.8),
+            stop_tokens: Some(vec!["<|im_end|>".to_string()]),
         };
 
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"type\":\"generate\""));
         assert!(json.contains("\"prompt\":\"test prompt\""));
+        assert!(json.contains("\"system\":\"test system\""));
         assert!(json.contains("\"max_tokens\":512"));
-        assert!(json.contains("\"temperature\":1.0"));
+        assert!(json.contains("\"temperature\":0.7"));
+    }
+
+    #[test]
+    fn test_request_serialization_omits_none_system() {
+        let request = Request::Generate {
+            prompt: "test prompt".to_string(),
+            system: None,
+            max_tokens: Some(512),
+            context_size: Some(2048),
+            model_path: Some("/path/to/model-dir".to_string()),
+            temperature: Some(0.7),
+            top_k: Some(20),
+            top_p: Some(0.8),
+            stop_tokens: Some(vec!["<|im_end|>".to_string()]),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(!json.contains("\"system\""));
     }
 
     #[test]

@@ -24,5 +24,15 @@
   "onboardingRequired": {
     "title": "Complete setup first",
     "description": "Finish onboarding first, then you can record."
+  },
+  "updates": {
+    "newVersionAvailable": "New version {{version}} available",
+    "installNow": "Install",
+    "installing": "Installing…",
+    "checkNow": "Check for updates",
+    "checking": "Checking…",
+    "autoCheck": "Check for updates automatically",
+    "upToDate": "You're up to date",
+    "versionAvailable": "Version {{version}} is available"
   }
 }

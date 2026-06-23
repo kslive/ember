@@ -118,6 +118,7 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
             return rest;
           });
           fetchModels();
+          onModelSelect(model);
           toast.success(t('builtin.downloadComplete', { model }));
         }
 
@@ -269,9 +270,9 @@ export function BuiltInModelManager({ selectedModel, onModelSelect }: BuiltInMod
           const isSelected = selectedModel === model.name;
 
           const lowerName = model.name.toLowerCase();
-          const badge = lowerName.includes('qwen') && lowerName.includes('7b')
+          const badge = lowerName.includes('8b')
             ? t('badge.recommended')
-            : lowerName.includes('gemma3:4b')
+            : lowerName.includes('4b')
               ? t('badge.balance')
               : undefined;
 

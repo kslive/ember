@@ -13,7 +13,7 @@
 
 ![macOS](https://img.shields.io/badge/macOS-14%2B-000?style=flat-square&logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000?style=flat-square)
-![version](https://img.shields.io/badge/version-1.1.0-f97316?style=flat-square)
+![version](https://img.shields.io/badge/version-1.2.0-f97316?style=flat-square)
 ![local](https://img.shields.io/badge/100%25-on--device-22c55e?style=flat-square)
 
 <img src="assets/hero.ru.png" width="900" alt="Ember — обзор"/>
@@ -46,11 +46,12 @@
   пропадёт.
 - **✦ Саммари в один клик.** Готовая встреча превращается в конспект локальной ИИ-моделью:
   краткое содержание, ключевые решения и задачи с ответственными. Поддерживаются встроенные
-  модели (Gemma 3, Qwen 2.5) и внешние провайдеры (Ollama, Claude, OpenAI, OpenRouter).
+  модели (Qwen3 на Apple MLX) и внешние провайдеры (Ollama, Claude, OpenAI, OpenRouter).
 - **🔎 Поиск** по транскриптам и саммари всех встреч с подсветкой совпадений.
 - **🎨 Темы** — светлая / тёмная / авто (по системе).
 - **🧭 Значок в меню-баре** — старт/стоп и быстрый доступ, даже когда окно скрыто.
 - **⚡ GPU-ускорение** (Metal + CoreML) для быстрой транскрипции.
+- **⬆️ Автообновление** — Ember проверяет новые версии и ставит их в один клик.
 - **💾 Сохранение аудио** встречи в MP4 (опционально).
 
 ---
@@ -68,7 +69,7 @@
 
 > Требуется **macOS 14+** на **Apple Silicon** (M1/M2/M3…).
 
-1. Скачайте `Ember_1.1.0_aarch64.dmg` со страницы [**Releases**](../../releases/latest).
+1. Скачайте `Ember_1.2.0_aarch64.dmg` со страницы [**Releases**](../../releases/latest).
 2. Откройте `.dmg` и перетащите **Ember.app** в папку **Программы**.
 3. Приложение подписано ad-hoc (без нотаризации Apple), поэтому при первом запуске
    macOS его заблокирует. Снимите карантин одним из способов:
@@ -102,7 +103,7 @@ Ember спроектирован как **privacy-first**:
 | UI | Next.js 14 · React 18 · TypeScript · Tailwind |
 | Аудио | Rust (cpal, Core Audio tap), профессиональный микшер + VAD |
 | Распознавание | whisper.cpp (Metal / CoreML) |
-| Саммари | локальные LLM (llama.cpp: Gemma 3 / Qwen 2.5) · Ollama · Claude · OpenAI |
+| Саммари | локальные LLM (Apple MLX: Qwen3) · Ollama · Claude · OpenAI |
 | Хранение | SQLite |
 
 ---

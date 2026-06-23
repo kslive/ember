@@ -24,5 +24,15 @@
   "onboardingRequired": {
     "title": "请先完成设置",
     "description": "请先完成引导，然后即可开始录制。"
+  },
+  "updates": {
+    "newVersionAvailable": "有新版本 {{version}} 可用",
+    "installNow": "安装",
+    "installing": "正在安装…",
+    "checkNow": "检查更新",
+    "checking": "正在检查…",
+    "autoCheck": "自动检查更新",
+    "upToDate": "已是最新版本",
+    "versionAvailable": "版本 {{version}} 可用"
   }
 }

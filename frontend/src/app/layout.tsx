@@ -11,6 +11,7 @@ import "sonner/dist/styles.css"
 import { useState, useEffect } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { RecordingStateProvider } from '@/contexts/RecordingStateContext'
 import { OllamaDownloadProvider } from '@/contexts/OllamaDownloadContext'
@@ -21,9 +22,9 @@ import { LocaleProvider } from '@/contexts/LocaleContext'
 import i18n from '@/i18n'
 import { OnboardingProvider } from '@/contexts/OnboardingContext'
 import { OnboardingFlow } from '@/components/onboarding'
-import { DownloadProgressToastProvider } from '@/components/shared/DownloadProgressToast'
 import { RootErrorBoundary } from '@/components/RootErrorBoundary'
 import { RecordingPostProcessingProvider } from '@/contexts/RecordingPostProcessingProvider'
+import { UpdateBanner } from '@/components/UpdateBanner'
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels'
 
 export default function RootLayout({
@@ -42,6 +43,13 @@ export default function RootLayout({
         console.error('[Layout] Failed to check onboarding status:', error)
         setShowOnboarding(true)
       })
+  }, [])
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(() => { getCurrentWindow().show().catch(() => {}) })
+    )
+    return () => cancelAnimationFrame(raf)
   }, [])
 
   useEffect(() => {
@@ -98,8 +106,6 @@ export default function RootLayout({
                       <SidebarProvider>
                         <TooltipProvider>
                           <RecordingPostProcessingProvider>
-                            {}
-                            <DownloadProgressToastProvider />
                             {showOnboarding === null ? (
                               <div className="h-screen bg-canvas" />
                             ) : showOnboarding ? (
@@ -119,7 +125,10 @@ export default function RootLayout({
                                   <PanelResizeHandle className="w-px bg-line data-[resize-handle-state=hover]:bg-accent/50 data-[resize-handle-state=drag]:bg-accent transition-colors relative outline-none cursor-col-resize before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']" />
                                   {}
                                   <Panel className="min-w-0">
-                                    <main className="h-full min-w-0 overflow-hidden bg-canvas">{children}</main>
+                                    <main className="h-full min-w-0 overflow-hidden bg-canvas flex flex-col">
+                                      <UpdateBanner />
+                                      <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
+                                    </main>
                                   </Panel>
                                 </PanelGroup>
                               </div>

@@ -80,7 +80,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     totalMb: 0,
     speedMbps: 0,
   });
-  const [selectedSummaryModel, setSelectedSummaryModel] = useState<string>('gemma3:1b');
+  const [selectedSummaryModel, setSelectedSummaryModel] = useState<string>('qwen3:8b');
   const [databaseExists, setDatabaseExists] = useState(false);
   const [isBackgroundDownloading, setIsBackgroundDownloading] = useState(false);
 
@@ -247,7 +247,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       'builtin-ai-download-progress',
       (event) => {
         const { model, progress, downloaded_mb, total_mb, speed_mbps, status } = event.payload;
-        if (model === selectedSummaryModel || model === 'gemma3:1b' || model === 'gemma3:4b') {
+        if (model === selectedSummaryModel || model === 'qwen3:8b' || model === 'qwen3:4b' || model === 'qwen3:1.7b') {
           setSummaryModelProgress(progress);
           setSummaryModelProgressInfo({
             percent: progress,
@@ -398,7 +398,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       if (includeGemma && !summaryModelDownloaded) {
         setTimeout(() => {
           console.log('[OnboardingContext] Starting Gemma download (delayed to prioritize Parakeet)');
-          invoke('builtin_ai_download_model', { modelName: selectedSummaryModel || 'gemma3:1b' })
+          invoke('builtin_ai_download_model', { modelName: selectedSummaryModel || 'qwen3:8b' })
             .catch(err => console.error('[OnboardingContext] Gemma download failed:', err));
         }, 3000);
       }

@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Settings2, Mic, Database as DatabaseIcon, SparkleIcon } from 'lucide-react';
+import { ArrowLeft, Settings2, Mic, Database as DatabaseIcon, SparkleIcon, Download } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { TranscriptSettings } from '@/components/TranscriptSettings';
 import { RecordingSettings } from '@/components/RecordingSettings';
 import { PreferenceSettings } from '@/components/PreferenceSettings';
 import { SummaryModelSettings } from '@/components/SummaryModelSettings';
+import { UpdateSettings } from '@/components/UpdateSettings';
 import { useConfig } from '@/contexts/ConfigContext';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +19,7 @@ const TABS = [
   { value: 'recording', labelKey: 'tabs.recording', icon: Mic },
   { value: 'Transcriptionmodels', labelKey: 'tabs.transcription', icon: DatabaseIcon },
   { value: 'summaryModels', labelKey: 'tabs.summary', icon: SparkleIcon },
+  { value: 'updates', labelKey: 'tabs.updates', icon: Download },
 ] as const;
 
 export default function SettingsPage() {
@@ -98,6 +100,9 @@ export default function SettingsPage() {
             </TabsContent>
             <TabsContent value="summaryModels" className="mt-0">
               <SummaryModelSettings />
+            </TabsContent>
+            <TabsContent value="updates" className="mt-0">
+              <UpdateSettings />
             </TabsContent>
           </div>
         </div>

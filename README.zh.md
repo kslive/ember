@@ -13,7 +13,7 @@
 
 ![macOS](https://img.shields.io/badge/macOS-14%2B-000?style=flat-square&logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000?style=flat-square)
-![version](https://img.shields.io/badge/version-1.1.0-f97316?style=flat-square)
+![version](https://img.shields.io/badge/version-1.2.0-f97316?style=flat-square)
 ![local](https://img.shields.io/badge/100%25-on--device-22c55e?style=flat-square)
 
 <img src="assets/hero.zh.png" width="900" alt="Ember — 概览"/>
@@ -41,12 +41,13 @@
   FaceTime、Telegram 等）：**通话开始——自动开始录制；通话结束——自动停止录制**并进入
   处理。即使 Ember 窗口最小化也在后台运行——不漏掉任何一场会议。
 - **✦ 一键摘要。** 结束的会议由本地 AI 模型整理成记录：要点、关键决策，以及带负责人的
-  待办事项。支持内置模型（Gemma 3、Qwen 2.5）和外部提供商（Ollama、Claude、OpenAI、
+  待办事项。支持内置模型（Qwen3，基于 Apple MLX）和外部提供商（Ollama、Claude、OpenAI、
   OpenRouter）。
 - **🔎 搜索** 所有会议的转写与摘要，并高亮匹配项。
 - **🎨 主题** —— 浅色 / 深色 / 自动（跟随系统）。
 - **🧭 菜单栏图标** —— 开始/停止与快速访问，即使窗口隐藏也可用。
 - **⚡ GPU 加速**（Metal + CoreML）实现快速转写。
+- **⬆️ 自动更新** —— Ember 检查新版本并一键安装。
 - **💾 保存会议音频** 为 MP4（可选）。
 
 ---
@@ -64,7 +65,7 @@
 
 > 需要运行于 **Apple Silicon**（M1/M2/M3…）的 **macOS 14+**。
 
-1. 从 [**Releases**](../../releases/latest) 页面下载 `Ember_1.1.0_aarch64.dmg`。
+1. 从 [**Releases**](../../releases/latest) 页面下载 `Ember_1.2.0_aarch64.dmg`。
 2. 打开 `.dmg`，将 **Ember.app** 拖入 **应用程序** 文件夹。
 3. 该应用为 ad-hoc 签名（未经 Apple 公证），因此首次启动时 macOS 会拦截它。
    请用以下任一方式解除隔离：
@@ -96,7 +97,7 @@ Ember 以 **隐私优先** 为设计理念：
 | 界面 | Next.js 14 · React 18 · TypeScript · Tailwind |
 | 音频 | Rust (cpal、Core Audio tap)，专业混音器 + VAD |
 | 识别 | whisper.cpp (Metal / CoreML) |
-| 摘要 | 本地 LLM (llama.cpp：Gemma 3 / Qwen 2.5) · Ollama · Claude · OpenAI |
+| 摘要 | 本地 LLM (Apple MLX：Qwen3) · Ollama · Claude · OpenAI |
 | 存储 | SQLite |
 
 ---

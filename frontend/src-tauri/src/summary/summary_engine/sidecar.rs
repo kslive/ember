@@ -61,7 +61,7 @@ impl SidecarManager {
     pub fn new(_app_data_dir: PathBuf) -> Result<Self> {
         let helper_binary_path = Self::resolve_helper_binary()?;
 
-        let idle_timeout_secs = std::env::var("LLAMA_IDLE_TIMEOUT")
+        let idle_timeout_secs = std::env::var("EMBER_MLX_IDLE_TIMEOUT")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(models::DEFAULT_IDLE_TIMEOUT_SECS);
@@ -88,11 +88,11 @@ impl SidecarManager {
 
     fn resolve_helper_binary() -> Result<PathBuf> {
 
-        if let Ok(env_path) = std::env::var("EMBER_LLAMA_HELPER") {
+        if let Ok(env_path) = std::env::var("EMBER_MLX_HELPER") {
             if !env_path.is_empty() {
                 let path = PathBuf::from(env_path);
                 if path.exists() {
-                    log::info!("Using llama-helper from EMBER_LLAMA_HELPER: {}", path.display());
+                    log::info!("Using mlx-helper from EMBER_MLX_HELPER: {}", path.display());
                     return Ok(path);
                 }
             }
@@ -100,7 +100,7 @@ impl SidecarManager {
 
         if let Ok(exe_path) = std::env::current_exe() {
             if let Some(exe_dir) = exe_path.parent() {
-                log::info!("Searching for llama-helper relative to executable: {}", exe_dir.display());
+                log::info!("Searching for mlx-helper relative to executable: {}", exe_dir.display());
 
                 let target_triple = std::env::var("TARGET")
                     .unwrap_or_else(|_| {
@@ -125,9 +125,9 @@ impl SidecarManager {
                     });
 
                 let binary_name = if cfg!(windows) {
-                    format!("llama-helper-{}.exe", target_triple)
+                    format!("mlx-helper-{}.exe", target_triple)
                 } else {
-                    format!("llama-helper-{}", target_triple)
+                    format!("mlx-helper-{}", target_triple)
                 };
 
                 let bundled = exe_dir.join(&binary_name);
@@ -141,7 +141,7 @@ impl SidecarManager {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                            if name.starts_with("llama-helper") && !name.ends_with(".d") {
+                            if name.starts_with("mlx-helper") && !name.ends_with(".d") {
                                 log::info!("Found fuzzy match next to executable: {}", path.display());
                                 return Ok(path);
                             }
@@ -152,7 +152,7 @@ impl SidecarManager {
         }
 
         if let Ok(resource_dir) = std::env::var("RESOURCE_DIR") {
-            log::info!("Searching for llama-helper in RESOURCE_DIR: {}", resource_dir);
+            log::info!("Searching for mlx-helper in RESOURCE_DIR: {}", resource_dir);
             let resource_path = PathBuf::from(&resource_dir);
 
             let target_triple = std::env::var("TARGET")
@@ -179,9 +179,9 @@ impl SidecarManager {
                 });
 
             let binary_name = if cfg!(windows) {
-                format!("llama-helper-{}.exe", target_triple)
+                format!("mlx-helper-{}.exe", target_triple)
             } else {
-                format!("llama-helper-{}", target_triple)
+                format!("mlx-helper-{}", target_triple)
             };
 
             let bundled = resource_path.join(&binary_name);
@@ -194,7 +194,7 @@ impl SidecarManager {
                 for entry in entries.flatten() {
                     let path = entry.path();
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if name.starts_with("llama-helper") && !name.ends_with(".d") {
+                        if name.starts_with("mlx-helper") && !name.ends_with(".d") {
                             log::info!("Found fuzzy match in RESOURCE_DIR: {}", path.display());
                             return Ok(path);
                         }
@@ -213,22 +213,23 @@ impl SidecarManager {
                 .to_path_buf();
 
             let candidates = vec![
-                project_root.join("target/release/llama-helper"),
-                project_root.join("target/debug/llama-helper"),
-                project_root.join("target/release/llama-helper.exe"),
-                project_root.join("target/debug/llama-helper.exe"),
+                project_root.join("frontend/src-tauri/binaries/mlx-helper-aarch64-apple-darwin"),
+                project_root.join("target/release/mlx-helper"),
+                project_root.join("target/debug/mlx-helper"),
+                project_root.join("target/release/mlx-helper.exe"),
+                project_root.join("target/debug/mlx-helper.exe"),
             ];
 
             for candidate in candidates {
                 if candidate.exists() {
-                    log::info!("Using dev llama-helper: {}", candidate.display());
+                    log::info!("Using dev mlx-helper: {}", candidate.display());
                     return Ok(candidate);
                 }
             }
         }
 
         Err(anyhow!(
-            "llama-helper binary not found. Build with 'cd llama-helper && cargo build --release' or set EMBER_LLAMA_HELPER env var."
+            "mlx-helper binary not found. Build with 'scripts/build-mlx-helper.sh' or set EMBER_MLX_HELPER env var."
         ))
     }
 
@@ -277,14 +278,14 @@ impl SidecarManager {
                 match reader.next_line().await {
                     Ok(Some(line)) => {
 
-                        log::debug!("llama-helper: {}", line);
+                        log::debug!("mlx-helper: {}", line);
                     }
                     Ok(None) => {
-                        log::debug!("llama-helper stderr closed");
+                        log::debug!("mlx-helper stderr closed");
                         break;
                     }
                     Err(e) => {
-                        log::debug!("llama-helper stderr read error: {}", e);
+                        log::debug!("mlx-helper stderr read error: {}", e);
                         break;
                     }
                 }
@@ -296,7 +297,7 @@ impl SidecarManager {
 
         self.shutdown().await?;
 
-        log::info!("Spawning llama-helper sidecar");
+        log::info!("Spawning mlx-helper sidecar");
         log::info!("Model path: {}", model_path.display());
 
         #[cfg(unix)]
@@ -312,7 +313,7 @@ impl SidecarManager {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env("LLAMA_IDLE_TIMEOUT", self.idle_timeout_secs.to_string());
+            .env("EMBER_MLX_IDLE_TIMEOUT", self.idle_timeout_secs.to_string());
 
         #[cfg(target_os = "windows")]
         {
@@ -324,7 +325,7 @@ impl SidecarManager {
 
         let mut child = command
             .spawn()
-            .with_context(|| format!("Failed to spawn llama-helper at {:?}", self.helper_binary_path))?;
+            .with_context(|| format!("Failed to spawn mlx-helper at {:?}", self.helper_binary_path))?;
 
         let stdin = child.stdin.take().ok_or_else(|| anyhow!("Failed to get stdin"))?;
         let stdout = child.stdout.take().ok_or_else(|| anyhow!("Failed to get stdout"))?;

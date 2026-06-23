@@ -50,6 +50,7 @@ pub fn start_pump<R: Runtime>(app: &AppHandle<R>) {
     reset();
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        let mut tick: u64 = 0;
         while PUMP_RUNNING.load(Ordering::SeqCst) {
             let m = mic_peak();
             let s = sys_peak();
@@ -58,6 +59,11 @@ pub fn start_pump<R: Runtime>(app: &AppHandle<R>) {
                 system: LevelOne { rms: s, peak: s },
             };
             let _ = app.emit("audio-levels", payload);
+
+            tick += 1;
+            if tick % 16 == 0 {
+                log::debug!("level_state: emitted 'audio-levels' mic_peak={:.4} sys_peak={:.4}", m, s);
+            }
 
             set_mic_peak(m * 0.7);
             set_sys_peak(s * 0.7);

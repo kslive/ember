@@ -51,6 +51,9 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
       );
       setMeetings(updatedMeetings);
       setCurrentMeeting({ id: meeting.id, title: meetingTitle });
+
+      const { emit } = await import('@tauri-apps/api/event');
+      await emit('meeting-title-updated', { meetingId: meeting.id, title: meetingTitle });
       return true;
     } catch (error) {
       console.error('Failed to save meeting title:', error);

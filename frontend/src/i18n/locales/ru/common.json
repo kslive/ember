@@ -24,5 +24,15 @@
   "onboardingRequired": {
     "title": "Сначала завершите настройку",
     "description": "Сначала пройдите онбординг, потом сможете записывать."
+  },
+  "updates": {
+    "newVersionAvailable": "Доступна новая версия {{version}}",
+    "installNow": "Установить",
+    "installing": "Установка…",
+    "checkNow": "Проверить обновления",
+    "checking": "Проверка…",
+    "autoCheck": "Проверять обновления автоматически",
+    "upToDate": "Установлена последняя версия",
+    "versionAvailable": "Доступна версия {{version}}"
   }
 }
