@@ -13,7 +13,7 @@
 
 ![macOS](https://img.shields.io/badge/macOS-14%2B-000?style=flat-square&logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000?style=flat-square)
-![version](https://img.shields.io/badge/version-1.2.0-f97316?style=flat-square)
+![version](https://img.shields.io/badge/version-1.2.1-f97316?style=flat-square)
 ![local](https://img.shields.io/badge/100%25-on--device-22c55e?style=flat-square)
 
 <img src="assets/hero.ru.png" width="900" alt="Ember — обзор"/>
@@ -69,7 +69,7 @@
 
 > Требуется **macOS 14+** на **Apple Silicon** (M1/M2/M3…).
 
-1. Скачайте `Ember_1.2.0_aarch64.dmg` со страницы [**Releases**](../../releases/latest).
+1. Скачайте `Ember_1.2.1_aarch64.dmg` со страницы [**Releases**](../../releases/latest).
 2. Откройте `.dmg` и перетащите **Ember.app** в папку **Программы**.
 3. Приложение подписано ad-hoc (без нотаризации Apple), поэтому при первом запуске
    macOS его заблокирует. Снимите карантин одним из способов:

@@ -13,7 +13,7 @@ No cloud, no subscriptions — audio and text never leave your device.
 
 ![macOS](https://img.shields.io/badge/macOS-14%2B-000?style=flat-square&logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000?style=flat-square)
-![version](https://img.shields.io/badge/version-1.2.0-f97316?style=flat-square)
+![version](https://img.shields.io/badge/version-1.2.1-f97316?style=flat-square)
 ![local](https://img.shields.io/badge/100%25-on--device-22c55e?style=flat-square)
 
 <img src="assets/hero.en.png" width="900" alt="Ember — overview"/>
@@ -68,7 +68,7 @@ Point Ember at your vault folder and the notes appear in your knowledge graph au
 
 > Requires **macOS 14+** on **Apple Silicon** (M1/M2/M3…).
 
-1. Download `Ember_1.2.0_aarch64.dmg` from the [**Releases**](../../releases/latest) page.
+1. Download `Ember_1.2.1_aarch64.dmg` from the [**Releases**](../../releases/latest) page.
 2. Open the `.dmg` and drag **Ember.app** into your **Applications** folder.
 3. The app is ad-hoc signed (not notarized by Apple), so macOS will block it on first
    launch. Remove the quarantine in one of these ways:

@@ -164,62 +164,25 @@ export default function Home() {
     const cur = new Array<number>(BARS).fill(0.15);
     const px = (v: number) => `${Math.round(Math.max(6, Math.min(40, 6 + v * 34)))}px`;
 
+    // Pure synthetic equalizer — never opens a microphone stream. Acquiring the
+    // mic in the webview (getUserMedia) engages macOS Voice-Processing I/O, which
+    // can hijack the input device and break audio in other apps (Zoom/Meet).
     let raf = 0;
-    let stopped = false;
-    let stream: MediaStream | null = null;
-    let audioCtx: AudioContext | null = null;
-    let analyser: AnalyserNode | null = null;
-    let freq: Uint8Array<ArrayBuffer> | null = null;
-
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (stopped) { stream.getTracks().forEach((tr) => tr.stop()); return; }
-        const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-        audioCtx = new Ctx();
-        await audioCtx.resume().catch(() => {});
-        const node = audioCtx.createAnalyser();
-        node.fftSize = 64;
-        node.smoothingTimeConstant = 0.75;
-        audioCtx.createMediaStreamSource(stream).connect(node);
-        freq = new Uint8Array(node.frequencyBinCount);
-        analyser = node;
-      } catch (e) {
-        console.warn('[rec-anim] mic visualizer unavailable, using synthetic animation:', e);
-      }
-    })();
-
     const start = performance.now();
     const tick = () => {
-      let next: string[];
-      if (analyser && freq) {
-        analyser.getByteFrequencyData(freq);
-        next = cur.map((c, i) => {
-          const target = (freq![i + 1] ?? 0) / 255;
-          const v = c + (target - c) * 0.45;
-          cur[i] = v;
-          return px(v);
-        });
-      } else {
-        const tms = (performance.now() - start) / 1000;
-        next = cur.map((c, i) => {
-          const target = 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(tms * (4 + (i % 5) * 0.7) + i * 0.9));
-          const v = c + (target - c) * 0.3;
-          cur[i] = v;
-          return px(v);
-        });
-      }
+      const tms = (performance.now() - start) / 1000;
+      const next = cur.map((c, i) => {
+        const target = 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(tms * (4 + (i % 5) * 0.7) + i * 0.9));
+        const v = c + (target - c) * 0.3;
+        cur[i] = v;
+        return px(v);
+      });
       setBarHeights(next);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
 
-    return () => {
-      stopped = true;
-      cancelAnimationFrame(raf);
-      if (stream) stream.getTracks().forEach((tr) => tr.stop());
-      if (audioCtx) audioCtx.close().catch(() => {});
-    };
+    return () => cancelAnimationFrame(raf);
   }, [recordingState.isRecording]);
 
   const isProcessingStop = status === RecordingStatus.PROCESSING_TRANSCRIPTS || isProcessing;
