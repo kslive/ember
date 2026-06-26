@@ -1,0 +1,204 @@
+import Combine
+import Core
+import Foundation
+import MLXLLM
+import MLXLMCommon
+
+public enum SummaryStatus: Equatable {
+    case idle
+    case loading
+    case ready
+    case generating
+    case error(String)
+}
+
+/// In-process Apple MLX summarization (Qwen3 4-bit). Local + offline.
+@MainActor
+public final class SummaryService: ObservableObject {
+    @Published public private(set) var status: SummaryStatus = .idle
+    /// Per-model download state (keyed by SummaryCatalog id, e.g. "qwen3:8b").
+    @Published public private(set) var states: [String: ModelDownloadState] = [:]
+
+    private var container: ModelContainer?
+    private var loadedRepo: String?
+    private var loadedContextTokens = 8192
+    private var tasks: [String: Task<Void, Never>] = [:]
+
+    public init() {
+        refreshStates()
+    }
+
+    public var isReady: Bool {
+        container != nil
+    }
+
+    public func refreshStates() {
+        for m in SummaryCatalog.all {
+            if case .downloading = states[m.id] { continue }
+            states[m.id] = isDownloaded(m.repoId) ? .ready : .absent
+        }
+    }
+
+    public func isDownloaded(_ repoId: String) -> Bool {
+        let dir = ModelPaths.mlxModelDir(repoId)
+        guard let items = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
+        return items.contains("config.json") && items.contains { $0.hasSuffix(".safetensors") }
+    }
+
+    public var isDownloading: Bool {
+        tasks.values.contains { !$0.isCancelled }
+    }
+
+    /// Starts a cancellable MLX repo download (no RAM load) with byte-accurate
+    /// progress (disk size vs catalog size).
+    public func startDownload(id: String, repoId: String) {
+        guard tasks[id] == nil else { return }
+        if isDownloaded(repoId) { states[id] = .ready; return }
+        states[id] = .downloading(0)
+        tasks[id] = Task { @MainActor [weak self] in
+            await self?.runDownload(id: id, repoId: repoId)
+            self?.tasks[id] = nil
+        }
+    }
+
+    public func cancelDownload(id: String, repoId: String) {
+        tasks[id]?.cancel()
+        tasks[id] = nil
+        try? FileManager.default.removeItem(at: ModelPaths.mlxModelDir(repoId))
+        states[id] = isDownloaded(repoId) ? .ready : .absent
+    }
+
+    public func cancelAllDownloads() {
+        for (id, t) in tasks {
+            t.cancel()
+            if let repo = SummaryCatalog.spec(for: id)?.repoId {
+                try? FileManager.default.removeItem(at: ModelPaths.mlxModelDir(repo))
+            }
+            states[id] = .absent
+        }
+        tasks.removeAll()
+    }
+
+    private func runDownload(id: String, repoId: String) async {
+        let expected = Int64(SummaryCatalog.spec(for: id)?.sizeMB ?? 1) * 1_000_000
+        let dir = ModelPaths.mlxModelDir(repoId)
+        let poll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                let size = ModelPaths.dirSize(dir)
+                let frac = expected > 0 ? min(0.99, Double(size) / Double(expected)) : 0
+                await MainActor.run { [weak self] in
+                    if case .downloading? = self?.states[id] { self?.states[id] = .downloading(frac) }
+                }
+            }
+        }
+        defer { poll.cancel() }
+        do {
+            _ = try await downloadModel(hub: defaultHubApi, configuration: ModelConfiguration(id: repoId)) { _ in }
+            if Task.isCancelled { return }
+            states[id] = isDownloaded(repoId) ? .ready : .failed("incomplete")
+        } catch {
+            if Task.isCancelled { return }
+            states[id] = isDownloaded(repoId) ? .ready : .failed(error.localizedDescription)
+        }
+    }
+
+    public func delete(id: String, repoId: String) {
+        cancelDownload(id: id, repoId: repoId)
+        try? FileManager.default.removeItem(at: ModelPaths.mlxModelDir(repoId))
+        states[id] = .absent
+        if loadedRepo == repoId { container = nil; loadedRepo = nil; status = .idle }
+    }
+
+    public func ensureLoaded(repoId: String) async {
+        if loadedRepo == repoId, container != nil { return }
+        status = .loading
+        let hintGB = SummaryCatalog.all.first { $0.repoId == repoId }?.ramHintGB ?? 4
+        if Self.availableMemoryGB() < Double(hintGB) {
+            status = .error("low-memory")
+            return
+        }
+        do {
+            let container = try await LLMModelFactory.shared.loadContainer(
+                configuration: ModelConfiguration(id: repoId)
+            )
+            self.container = container
+            loadedRepo = repoId
+            loadedContextTokens = SummaryCatalog.all.first { $0.repoId == repoId }?.contextTokens ?? 8192
+            status = .ready
+        } catch {
+            status = .error(error.localizedDescription)
+        }
+    }
+
+    /// Reclaimable RAM in GB (free + inactive + purgeable). Returns a huge value
+    /// if the query fails so we never block on an unknown.
+    nonisolated static func availableMemoryGB() -> Double {
+        var stats = vm_statistics64_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+        let kr = withUnsafeMutablePointer(to: &stats) { ptr in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+            }
+        }
+        guard kr == KERN_SUCCESS else { return .greatestFiniteMagnitude }
+        let page = Double(vm_kernel_page_size)
+        let bytes = (Double(stats.free_count) + Double(stats.inactive_count) + Double(stats.purgeable_count)) * page
+        return bytes / 1_073_741_824.0
+    }
+
+    /// Generates a Markdown summary in the given language code (en/ru/zh/…).
+    public func summarize(transcript: String, languageCode: String) async -> String {
+        guard let container else { return "" }
+        status = .generating
+
+        let system = SummaryPrompts.system(language: languageCode)
+        let user = SummaryPrompts.user(transcript: transcript, language: languageCode) + "\n\n/no_think"
+        let params = GenerateParameters(
+            maxTokens: 6144, maxKVSize: loadedContextTokens, kvBits: 8, quantizedKVStart: 256,
+            temperature: 0.7, topP: 0.8
+        )
+
+        do {
+            let output = try await container.perform { (ctx: ModelContext) -> String in
+                let input = try await ctx.processor.prepare(
+                    input: UserInput(chat: [.system(system), .user(user)])
+                )
+                var detok = NaiveStreamingDetokenizer(tokenizer: ctx.tokenizer)
+                var text = ""
+                _ = try MLXLMCommon.generate(
+                    input: input, parameters: params, context: ctx
+                ) { (tokens: [Int]) -> GenerateDisposition in
+                    guard let last = tokens.last else { return .more }
+                    detok.append(token: last)
+                    if let piece = detok.next(), !piece.isEmpty { text += piece }
+                    return .more
+                }
+                return text
+            }
+            status = .ready
+            return SummarySanitize.clean(ThinkStripper.strip(output), transcript: transcript)
+        } catch {
+            status = .error(error.localizedDescription)
+            return ""
+        }
+    }
+
+    /// Summary language = the user-selected UI language. We deliberately do NOT
+    /// auto-detect: language recognizers frequently mistake short Russian transcripts
+    /// for Ukrainian, producing summaries in the wrong language.
+    public nonisolated static func summaryLanguageCode(selected: AppLanguage) -> String {
+        selected.rawValue
+    }
+}
+
+/// Removes Qwen3 `<think>…</think>` reasoning blocks and stray tags.
+enum ThinkStripper {
+    static func strip(_ s: String) -> String {
+        var out = s.replacingOccurrences(of: "(?is)<think>.*?</think>", with: "", options: .regularExpression)
+        out = out.replacingOccurrences(of: "<think>", with: "")
+        out = out.replacingOccurrences(of: "</think>", with: "")
+        out = out.replacingOccurrences(of: "/no_think", with: "")
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}

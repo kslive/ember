@@ -1,0 +1,10 @@
+# SwiftFormat — default ruleset. Only two project-specific settings:
+#  - trailing-commas never: SwiftFormat would otherwise ADD trailing commas, which
+#    SwiftLint's default `trailing_comma` rule forbids — keep them in agreement.
+#  - no --max-width: don't fight SwiftLint's (relaxed) line_length.
+--swift-version 5.10
+--trailing-commas never
+# SwiftFormat's wrapMultilineStatementBraces puts `{` on its own line for wrapped
+# declarations, which conflicts with SwiftLint's default `opening_brace` (same line).
+--disable wrapMultilineStatementBraces
+--exclude Tuist,Derived,.build,**/Generated

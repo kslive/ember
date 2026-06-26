@@ -1,0 +1,20 @@
+# Tuist generated projects (regenerated from Project.swift / Tuist/Package.swift)
+*.xcodeproj
+*.xcworkspace
+Derived/
+Tuist/.build/
+Tuist/Dependencies/
+graph.png
+
+# Build artifacts
+.build/
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+
+# SPM
+.swiftpm/
+
+# macOS
+.DS_Store
