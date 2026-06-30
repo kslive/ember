@@ -26,22 +26,25 @@ final class SummaryLogicTests: XCTestCase {
 
     func testRussianPromptStructure() {
         let p = SummaryPrompts.system(language: "ru")
-        assertStructure(p, ["# ", "> [!tip]", "## Участники", "## Главное",
+        assertStructure(p, ["# ", "> [!tip]", "## Главное", "## Обсуждение",
                             "## Решения", "## Задачи", "> [!warning]", "## Цитаты"])
+        XCTAssertFalse(p.contains("## Участники"))
         XCTAssertTrue(p.contains("Встреча прошла успешно"))
     }
 
     func testEnglishPromptStructure() {
         let p = SummaryPrompts.system(language: "en")
-        assertStructure(p, ["# ", "> [!tip]", "## Participants", "## Key points",
+        assertStructure(p, ["# ", "> [!tip]", "## Key points", "## Discussion",
                             "## Decisions", "## Action items", "> [!warning]", "## Quotes"])
+        XCTAssertFalse(p.contains("## Participants"))
         XCTAssertTrue(p.contains("Meeting"))
     }
 
     func testChinesePromptStructure() {
         let p = SummaryPrompts.system(language: "zh")
-        assertStructure(p, ["# ", "> [!tip]", "## 参会者", "## 重点",
+        assertStructure(p, ["# ", "> [!tip]", "## 重点", "## 讨论",
                             "## 决定", "## 行动项", "> [!warning]", "## 引用"])
+        XCTAssertFalse(p.contains("## 参会者"))
     }
 
     func testTitleUsesSpecificH1() {

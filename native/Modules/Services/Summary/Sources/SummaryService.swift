@@ -156,7 +156,7 @@ public final class SummaryService: ObservableObject {
         guard container != nil else { return "" }
         status = .generating
 
-        let maxGen = 1536
+        let maxGen = 4096
         let budgetTokens = max(2000, loadedContextTokens - maxGen - 1200)
         let budgetChars = budgetTokens * 2
 

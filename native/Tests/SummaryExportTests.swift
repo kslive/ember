@@ -10,11 +10,12 @@ final class SummaryExportTests: XCTestCase {
 
     func testFileNameFromTitle() {
         XCTAssertEqual(SummaryExport.fileName(title: "Планёрка по релизу", createdAt: date(2026, 6, 1, 10, 0)),
-                       "Планёрка по релизу.md")
+                       "2026-06-01 — Планёрка по релизу.md")
     }
 
     func testFileNameSanitizesIllegalChars() {
-        XCTAssertEqual(SummaryExport.fileName(title: "a/b:c*d?", createdAt: date(2026, 6, 1, 10, 0)), "a-b-c-d-.md")
+        XCTAssertEqual(SummaryExport.fileName(title: "a/b:c*d?", createdAt: date(2026, 6, 1, 10, 0)),
+                       "2026-06-01 — a-b-c-d-.md")
     }
 
     func testFileNameEmptyFallsBackToDate() {
@@ -37,7 +38,7 @@ final class SummaryExportTests: XCTestCase {
                                       typeLabel: "Meeting", folder: dir.path)
         XCTAssertNotNil(url)
         if let url {
-            XCTAssertEqual(url.lastPathComponent, "X.md")
+            XCTAssertEqual(url.lastPathComponent, "2026-06-01 — X.md")
             XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
             let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
             XCTAssertTrue(content.contains("tags: [meeting]"))

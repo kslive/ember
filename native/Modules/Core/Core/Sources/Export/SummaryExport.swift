@@ -20,13 +20,16 @@ public enum SummaryExport {
         return yaml + markdown + "\n"
     }
 
-    /// Sanitized `<title>.md`, or a `yyyy-MM-dd-HH-mm.md` fallback when the title is empty.
+    /// `yyyy-MM-dd — <title>.md` (matches the Obsidian vault convention); falls back to
+    /// `yyyy-MM-dd-HH-mm.md` when the title is empty.
     public static func fileName(title: String, createdAt: Date) -> String {
+        let d = DateFormatter(); d.dateFormat = "yyyy-MM-dd"
+        let date = d.string(from: createdAt)
         let safe = title
             .components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|\n\r\t"))
             .joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        if !safe.isEmpty { return String(safe.prefix(100)) + ".md" }
+        if !safe.isEmpty { return "\(date) — \(String(safe.prefix(100))).md" }
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd-HH-mm"
         return f.string(from: createdAt) + ".md"
     }
