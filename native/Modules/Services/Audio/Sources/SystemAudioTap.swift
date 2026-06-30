@@ -77,6 +77,11 @@ final class SystemAudioTap {
         stateLock.unlock()
     }
 
+    /// Belt-and-suspenders: if this tap is dropped without an explicit stop(),
+    /// still destroy the aggregate device / process tap / IOProc so no orphaned
+    /// CoreAudio objects linger (which could feed call-detection false positives).
+    deinit { stop() }
+
     private func installOutputListener() {
         guard listenerBlock == nil else { return }
         let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.scheduleRebuild() }

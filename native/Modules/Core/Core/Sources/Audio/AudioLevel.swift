@@ -21,6 +21,27 @@ public enum AudioLevel {
         }
     }
 
+    /// Peak (max |sample|) over `n` contiguous Floats. Speech-vs-silence detection
+    /// must use PEAK, not mean RMS: a window/recording of real speech mixed with
+    /// pauses has a LOW average RMS but clear peaks, so an RMS gate wrongly drops a
+    /// quiet-but-real microphone channel while keeping continuous loud system audio.
+    public static func peak(_ p: UnsafePointer<Float>, _ n: Int) -> Float {
+        guard n > 0 else { return 0 }
+        var m: Float = 0
+        for i in 0 ..< n {
+            let a = abs(p[i])
+            if a > m { m = a }
+        }
+        return m
+    }
+
+    public static func peak(_ samples: [Float]) -> Float {
+        samples.withUnsafeBufferPointer { buf in
+            guard let base = buf.baseAddress else { return 0 }
+            return peak(base, buf.count)
+        }
+    }
+
     /// Maps an RMS amplitude to a 0...1 meter-bar value. Mic and system bars MUST use
     /// this single definition so they scale identically.
     public static func meter(_ rms: Float) -> CGFloat {

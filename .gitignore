@@ -95,3 +95,6 @@ _design_reference/
 frontend/src-tauri/mlx-swift_Cmlx.bundle
 frontend/src-tauri/binaries/mlx-helper-aarch64-apple-darwin
 frontend/src-tauri/mlx-helper/.build/
+
+# Release build artifacts
+native/dist/

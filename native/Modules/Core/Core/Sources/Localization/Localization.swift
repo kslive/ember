@@ -57,7 +57,9 @@ public final class LocaleManager: ObservableObject {
             self.language = stored
         } else {
             let pref = Locale.preferredLanguages.first ?? "en"
-            if pref.hasPrefix("ru") { self.language = .ru } else if pref.hasPrefix("zh") { self.language = .zh } else { self.language = .en }
+            let resolved: AppLanguage = pref.hasPrefix("ru") ? .ru : (pref.hasPrefix("zh") ? .zh : .en)
+            self.language = resolved
+            UserDefaults.standard.set(resolved.rawValue, forKey: Self.storageKey)
         }
     }
 

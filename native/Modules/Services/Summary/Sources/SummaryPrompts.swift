@@ -39,6 +39,21 @@ enum SummaryPrompts {
         }
     }
 
+    /// Map-step prompt for long transcripts: terse bullet notes from ONE chunk,
+    /// later reduced by `system`. No title/structure — just salvageable content.
+    static func chunkSystem(language: String) -> String {
+        switch language.prefix(2) {
+        case "ru":
+            "Это ФРАГМЕНТ длинного транскрипта встречи. Извлеки сжатые заметки маркерами «- »: ключевые мысли, решения, задачи, важные факты — только реально сказанное, своими словами. Без заголовка и вступления. Пиши на русском."
+        case "zh":
+            "这是会议长记录的一个片段。用要点「- 」提取简洁笔记：关键观点、决定、任务、重要事实——只写真正说过的，用自己的话。不要标题或前言。用中文写。"
+        case "en":
+            "This is a PART of a long meeting transcript. Extract concise bullet notes (\"- \"): key points, decisions, tasks, important facts — only what was actually said, in your own words. No title, no preamble. Write in English."
+        default:
+            "This is a PART of a long meeting transcript. Extract concise bullet notes (\"- \") of key points, decisions, tasks and facts — only what was said, in your own words. No title. Write in \(languageName(language))."
+        }
+    }
+
     private static let en = """
     You are a professional meeting-notes assistant. You write a DIGEST for people who did not attend — something they can read in 30 seconds and understand what happened. The summary is NOT a transcript.
 

@@ -34,6 +34,11 @@ public final class RecordingEngine: ObservableObject {
     private nonisolated(unsafe) var systemAccumulator: [Float] = []
     private nonisolated(unsafe) let liveLock = NSLock()
     private nonisolated(unsafe) var converterFormatKey: String = ""
+    /// Monotonic recording-start reference. BOTH accumulators position their samples
+    /// against it so mic (continuous) and system (gaps during mac silence) share ONE
+    /// timeline → segment timecodes are true recording time and the two channels stay
+    /// matched (no reordering / "mic disappears when system audio starts").
+    private nonisolated(unsafe) var startUptime: Double = 0
 
     private nonisolated(unsafe) let micFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
     private nonisolated(unsafe) var fileConverter: AVAudioConverter?
@@ -90,9 +95,9 @@ public final class RecordingEngine: ObservableObject {
         systemAccumulator.reserveCapacity(16000 * 60 * 30)
         liveLock.unlock()
         converterFormatKey = ""
+        startUptime = ProcessInfo.processInfo.systemUptime
 
-        pinnedInputID = SettingsStore.preferredMicUID().flatMap { AudioDevices.deviceID(forUID: $0) }
-            ?? AudioDevices.defaultInputID()
+        pinnedInputID = AudioDevices.hardwareInputID(preferUID: SettingsStore.preferredMicUID())
         micCapture.onBuffer = { [weak self] buffer in
             guard let self else { return }
             ensureConverters(for: buffer.format)
@@ -107,8 +112,7 @@ public final class RecordingEngine: ObservableObject {
         micCapture.onDeviceLost = { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.status == .recording else { return }
-                self.pinnedInputID = SettingsStore.preferredMicUID().flatMap { AudioDevices.deviceID(forUID: $0) }
-                    ?? AudioDevices.defaultInputID()
+                self.pinnedInputID = AudioDevices.hardwareInputID(preferUID: SettingsStore.preferredMicUID())
                 self.micCapture.stop()
                 self.startMic(retry: 8)
             }
@@ -207,6 +211,7 @@ public final class RecordingEngine: ObservableObject {
         levels = Array(repeating: 0, count: 15)
         converter = nil
         converterFormatKey = ""
+        startUptime = 0
         micFileLock.lock(); fileConverter = nil; micFile = nil; micFileLock.unlock()
         liveLock.lock(); liveAccumulator = []; systemAccumulator = []; liveLock.unlock()
     }
@@ -268,9 +273,25 @@ public final class RecordingEngine: ObservableObject {
         guard err == nil, let ch = out.floatChannelData?[0] else { return }
         let n = Int(out.frameLength)
         guard n > 0 else { return }
+        let offset = currentOffset()
         liveLock.lock()
+        padSilence(&liveAccumulator, toOffset: offset)
         liveAccumulator.append(contentsOf: UnsafeBufferPointer(start: ch, count: n))
         liveLock.unlock()
+    }
+
+    /// Samples elapsed since recording start (the shared timeline). Realtime-safe
+    /// (mach clock, no locks).
+    private nonisolated func currentOffset() -> Int {
+        Int(max(0, ProcessInfo.processInfo.systemUptime - startUptime) * 16000)
+    }
+
+    /// Zero-fills an accumulator up to `offset` so its index maps to real recording
+    /// time (closing gaps where a channel — usually system audio during mac silence —
+    /// produced nothing). Call under `liveLock`.
+    private nonisolated func padSilence(_ acc: inout [Float], toOffset offset: Int) {
+        let gap = offset - acc.count
+        if gap > 0, gap < 16000 * 3600 { acc.append(contentsOf: repeatElement(0, count: gap)) }
     }
 
     /// Snapshot of accumulated 16 kHz mono MIC samples (full recording).
@@ -288,7 +309,11 @@ public final class RecordingEngine: ObservableObject {
 
     /// Appends 16 kHz system-audio samples (realtime thread, from SystemAudioTap).
     private nonisolated func appendSystemLive(_ s: [Float]) {
-        liveLock.lock(); systemAccumulator.append(contentsOf: s); liveLock.unlock()
+        let offset = currentOffset()
+        liveLock.lock()
+        padSilence(&systemAccumulator, toOffset: offset)
+        systemAccumulator.append(contentsOf: s)
+        liveLock.unlock()
     }
 
     public func liveMicCount() -> Int {

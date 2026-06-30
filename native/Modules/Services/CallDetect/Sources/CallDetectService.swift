@@ -8,6 +8,11 @@ public struct CallDetectState: Equatable, Sendable {
     public var activeSeconds = 0
     public var inactiveSeconds = 0
     public var autoSession = false
+    /// Becomes true after the first observed INACTIVE tick. Until then we never
+    /// auto-start — so input that is "already active" when monitoring begins (e.g.
+    /// residual capture from a just-quit Ember instance right after launch) can't
+    /// trigger a false recording. Only a genuine inactive→active rising edge starts.
+    public var armed = false
     public init() {}
 }
 
@@ -70,11 +75,12 @@ public final class CallDetectService: ObservableObject {
         if active {
             st.activeSeconds += 1
             st.inactiveSeconds = 0
-            if st.activeSeconds >= startDebounce, !st.autoSession {
+            if st.armed, st.activeSeconds >= startDebounce, !st.autoSession {
                 st.autoSession = true
                 event = .start
             }
         } else {
+            st.armed = true
             st.activeSeconds = 0
             st.inactiveSeconds += 1
             if st.autoSession, st.inactiveSeconds >= stopDebounce {
@@ -88,6 +94,7 @@ public final class CallDetectService: ObservableObject {
     /// True if any *other* process is currently capturing audio input.
     static func externalInputActive() -> Bool {
         let selfPid = ProcessInfo.processInfo.processIdentifier
+        let selfBundle = Bundle.main.bundleIdentifier
         let system = AudioObjectID(kAudioObjectSystemObject)
 
         var listAddr = AudioObjectPropertyAddress(
@@ -121,6 +128,8 @@ public final class CallDetectService: ObservableObject {
             guard AudioObjectGetPropertyData(proc, &pidAddr, 0, nil, &pSize, &pid) == noErr else { continue }
 
             if pid == selfPid { continue }
+            guard let app = NSRunningApplication(processIdentifier: pid) else { continue }
+            if let selfBundle, app.bundleIdentifier == selfBundle { continue }
             if isHelper(pid) { continue }
             return true
         }

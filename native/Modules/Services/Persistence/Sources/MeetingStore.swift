@@ -129,60 +129,15 @@ public final class MeetingStore: ObservableObject {
         return row?.model
     }
 
-    /// Inserts a spread of sample meetings across several dates with distinct
-    /// titles, transcripts and summaries, so search and date grouping can be
-    /// exercised end-to-end.
-    private struct DemoSpec {
-        let hoursAgo: Double
-        let titleRU: String, titleEN: String, titleZH: String
-        let linesRU: [String], linesEN: [String]
-    }
-
-    public func seedDemo(language: AppLanguage) {
-        let now = Date()
-        let specs: [DemoSpec] = [
-            DemoSpec(hoursAgo: 1, titleRU: "Планёрка по релизу 1.3", titleEN: "Release 1.3 planning", titleZH: "1.3 发布计划",
-                     linesRU: ["Финализируем чек-лист релиза 1.3.", "Осталось закрыть три бага в записи.", "Дата релиза — пятница."],
-                     linesEN: ["Let's finalize the 1.3 release checklist.", "Three recording bugs left to close.", "Ship date is Friday."]),
-            DemoSpec(hoursAgo: 3, titleRU: "Звонок с дизайнером", titleEN: "Call with the designer", titleZH: "与设计师通话",
-                     linesRU: ["Обсудили новые иконки и отступы.", "Дизайнер пришлёт макеты к вечеру."],
-                     linesEN: ["Reviewed the new icons and spacing.", "Designer will send mockups tonight."]),
-            DemoSpec(hoursAgo: 26, titleRU: "Интервью с кандидатом iOS", titleEN: "iOS candidate interview", titleZH: "iOS 候选人面试",
-                     linesRU: ["Кандидат рассказал про опыт со SwiftUI.", "Сильные стороны — анимации и архитектура."],
-                     linesEN: ["Candidate walked through SwiftUI experience.", "Strong in animations and architecture."]),
-            DemoSpec(hoursAgo: 74, titleRU: "Ретро спринта", titleEN: "Sprint retro", titleZH: "冲刺回顾",
-                     linesRU: ["Что прошло хорошо: стабильный темп.", "Что улучшить: ревью тянется слишком долго."],
-                     linesEN: ["What went well: a steady pace.", "To improve: reviews drag on too long."]),
-            DemoSpec(hoursAgo: 150, titleRU: "Обсуждение цен на технику", titleEN: "Hardware pricing discussion", titleZH: "硬件定价讨论",
-                     linesRU: ["Цены на комплектующие выросли.", "Решили поднять прайс на восемь процентов."],
-                     linesEN: ["Component prices went up.", "Decided to raise the price by eight percent."]),
-            DemoSpec(hoursAgo: 390, titleRU: "Питч инвесторам", titleEN: "Investor pitch", titleZH: "投资人路演",
-                     linesRU: ["Показали метрики роста за квартал.", "Инвесторы попросили юнит-экономику."],
-                     linesEN: ["Showed quarterly growth metrics.", "Investors asked for unit economics."]),
-            DemoSpec(hoursAgo: 980, titleRU: "Онбординг нового клиента", titleEN: "New client onboarding", titleZH: "新客户入职",
-                     linesRU: ["Прошли по плану внедрения.", "Клиент доволен сроками."],
-                     linesEN: ["Walked through the rollout plan.", "Client is happy with the timeline."])
-        ]
-        for (i, s) in specs.enumerated() {
-            let id = "demo-\(i)-\(UUID().uuidString.prefix(8))"
-            let created = now.addingTimeInterval(-s.hoursAgo * 3600)
-            let title = language == .ru ? s.titleRU : (language == .zh ? s.titleZH : s.titleEN)
-            let lines = language == .ru ? s.linesRU : s.linesEN
-            upsert(Meeting(id: id, title: title, createdAt: created, updatedAt: created,
-                           durationSeconds: Double(lines.count) * 60 + 120, participantCount: 2 + i % 4))
-            var segs: [TranscriptSegment] = []
-            var t = 0.0
-            for line in lines {
-                segs.append(TranscriptSegment(meetingId: id, text: line, startSeconds: t, endSeconds: t + 12))
-                t += 18
-            }
-            saveTranscript(meetingId: id, segments: segs)
-            let sumLabel = language == .ru ? "Краткое содержание" : (language == .zh ? "摘要" : "Summary")
-            let hiLabel = language == .ru ? "Главное" : (language == .zh ? "重点" : "Highlights")
-            let bullets = lines.map { "- \($0)" }.joined(separator: "\n")
-            let md = "# \(title)\n\n## \(sumLabel)\n\(lines.joined(separator: " "))\n\n## \(hiLabel)\n\(bullets)\n"
-            saveSummary(meetingId: id, summary: MeetingSummary(markdown: md))
+    /// One-time cleanup of the old demo/sample meetings (id prefix `demo-`) that earlier
+    /// builds seeded on first launch. A real install must start empty.
+    public func purgeDemo() {
+        try? dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM segment WHERE meetingId LIKE 'demo-%'")
+            try db.execute(sql: "DELETE FROM summary WHERE meetingId LIKE 'demo-%'")
+            try db.execute(sql: "DELETE FROM meeting WHERE id LIKE 'demo-%'")
         }
+        reload()
     }
 }
 

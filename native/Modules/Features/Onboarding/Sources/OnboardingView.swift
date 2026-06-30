@@ -110,7 +110,10 @@ public struct OnboardingView: View {
             }
             .padding(.bottom, 8)
 
-            OnboardingCTA(locale.t("common.continue")) { advance(to: .welcome) }
+            OnboardingCTA(locale.t("common.continue")) {
+                locale.setLanguage(locale.language)
+                advance(to: .welcome)
+            }
         }
     }
 

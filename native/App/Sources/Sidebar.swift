@@ -8,6 +8,9 @@ struct Sidebar: View {
     @Binding var selectedMeetingId: String?
     let meetings: [Meeting]
     var width: CGFloat = 266
+    var isRecording: Bool = false
+    var recordingElapsed: TimeInterval = 0
+    var onTapRecording: () -> Void = {}
     var onRename: (Meeting) -> Void = { _ in }
     var onDelete: (Meeting) -> Void = { _ in }
     @State private var query = ""
@@ -18,6 +21,7 @@ struct Sidebar: View {
             logo
             searchField
             nav
+            if isRecording, route != .home { recordingIndicator }
             ScrollView {
                 meetingsSection.padding(.bottom, 8)
             }
@@ -76,6 +80,18 @@ struct Sidebar: View {
         .frame(height: 40)
         .background(EmberColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: 11))
+    }
+
+    /// Shown while recording and the user has navigated away from Home — taps back to the live view.
+    private var recordingIndicator: some View {
+        Button(action: onTapRecording) {
+            RecordingBadge(label: locale.t("recording.status"), timecode: Format.timecode(recordingElapsed))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverCursor()
+        .padding(.horizontal, 4)
     }
 
     private var nav: some View {

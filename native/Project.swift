@@ -8,8 +8,8 @@ let baseSettings: SettingsDictionary = [
     "DEVELOPMENT_TEAM": "",
     "ENABLE_HARDENED_RUNTIME": "YES",
     "SWIFT_VERSION": "5.0",
-    "MARKETING_VERSION": "1.3.0",
-    "CURRENT_PROJECT_VERSION": "1",
+    "MARKETING_VERSION": "1.3.1",
+    "CURRENT_PROJECT_VERSION": "2",
     "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
 ]
 

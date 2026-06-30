@@ -21,6 +21,9 @@ struct AppShell: View {
         HStack(spacing: 0) {
             Sidebar(route: $model.route, selectedMeetingId: $model.selectedMeetingId, meetings: model.store.meetings,
                     width: CGFloat(sidebarWidth),
+                    isRecording: model.isRecordingActive,
+                    recordingElapsed: model.engine.elapsed,
+                    onTapRecording: { model.route = .home },
                     onRename: { model.renaming = $0 }, onDelete: { model.deleting = $0 })
             sidebarDivider
             mainContent
@@ -116,22 +119,22 @@ struct AppShell: View {
     }
 
     @ViewBuilder private var mainContent: some View {
-        if model.isRecordingActive {
-            RecordingView(engine: model.engine, segments: model.liveSegments, onStop: { model.stopRecording(language: locale.language) })
-        } else {
-            switch model.route {
-            case .home:
+        switch model.route {
+        case .home:
+            if model.isRecordingActive {
+                RecordingView(engine: model.engine, segments: model.liveSegments, onStop: { model.stopRecording(language: locale.language) })
+            } else {
                 HomeIdleView(isEmpty: model.store.meetings.isEmpty, onStart: model.startRecording)
-            case .meetings:
-                if let id = model.selectedMeetingId, let meeting = model.meeting(id) {
-                    MeetingDetailContainer(model: model, meeting: meeting)
-                        .id(id)
-                } else {
-                    emptyPane
-                }
-            case .settings:
-                SettingsView(transcription: model.transcription, summary: model.summary)
             }
+        case .meetings:
+            if let id = model.selectedMeetingId, let meeting = model.meeting(id) {
+                MeetingDetailContainer(model: model, meeting: meeting)
+                    .id(id)
+            } else {
+                emptyPane
+            }
+        case .settings:
+            SettingsView(transcription: model.transcription, summary: model.summary)
         }
     }
 

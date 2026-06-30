@@ -130,6 +130,16 @@ public final class TranscriptionService: ObservableObject {
         }
     }
 
+    /// Frees the loaded WhisperKit model to reclaim RAM (e.g. before loading the
+    /// large MLX summary model on memory-tight machines). The next transcription
+    /// reloads it. No-op while actively transcribing.
+    public func unload() {
+        if case .transcribing = status { return }
+        kit = nil
+        loadedModel = nil
+        status = .idle
+    }
+
     /// Transcribes a 16 kHz mono sample array (used for live transcription).
     /// Does not change `status` so it can run alongside recording.
     /// `strict` enables WhisperKit's no-speech/low-confidence thresholds. The LIVE pass
@@ -162,6 +172,8 @@ public final class TranscriptionService: ObservableObject {
             o.noSpeechThreshold = 0.6
             o.logProbThreshold = -1.0
             o.compressionRatioThreshold = 2.4
+            o.chunkingStrategy = .vad
+            o.temperatureFallbackCount = 2
         }
         if let language { o.language = language }
         return o
@@ -193,12 +205,15 @@ public final class TranscriptionService: ObservableObject {
         return false
     }
 
-    /// Transcribes an audio file into segments.
-    public func transcribe(url: URL, meetingId: String, language: String?) async -> [TranscriptSegment] {
+    /// Transcribes an audio file into segments. The empty-result mixed fallback in
+    /// AppModel.process passes `strict: false` — if both strict per-channel passes
+    /// already rejected everything, re-running the mix with the same strict thresholds
+    /// would reject it too.
+    public func transcribe(url: URL, meetingId: String, language: String?, strict: Bool = false) async -> [TranscriptSegment] {
         guard let kit else { return [] }
         status = .transcribing
         do {
-            let results: [TranscriptionResult] = try await kit.transcribe(audioPath: url.path, decodeOptions: Self.decodeOptions(language: language))
+            let results: [TranscriptionResult] = try await kit.transcribe(audioPath: url.path, decodeOptions: Self.decodeOptions(language: language, strict: strict))
             var segments: [TranscriptSegment] = []
             for result in results {
                 for s in result.segments {

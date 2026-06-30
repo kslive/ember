@@ -49,25 +49,22 @@ shasum -a 256 "$DIST/$APP_NAME-$VERSION.zip" | awk '{print $1}' > "$DIST/$APP_NA
 SHA="$(cat "$DIST/$APP_NAME-$VERSION.zip.sha256")"
 echo "📦 $APP_NAME-$VERSION.zip  sha256=$SHA"
 
-# 6) 1.2 → 1.3 BRIDGE (Tauri updater): tar.gz + minisign signature + latest.json
-TARBALL="$DIST/$APP_NAME.app.tar.gz"
-( cd "$DIST" && tar czf "$APP_NAME.app.tar.gz" "$APP_NAME.app" )
-SIG=""
-if command -v tauri >/dev/null 2>&1; then
-  # tauri writes "<tarball>.sig"; its contents is the value for latest.json.signature
-  tauri signer sign --private-key-path "$TAURI_KEY" "$TARBALL"
-  [ -f "$TARBALL.sig" ] && SIG="$(cat "$TARBALL.sig")"
-fi
-if [ -z "$SIG" ]; then
-  # NEVER write a latest.json with an empty signature — every 1.2.x client would reject
-  # it, stranding the whole existing user base. Fail hard instead.
-  echo "❌  Tarball signing failed (need the Tauri CLI + key password)."
-  echo "    Run:  tauri signer sign --private-key-path $TAURI_KEY $TARBALL"
-  echo "    Then re-run this script. NOT writing latest.json (would break the 1.2→1.3 bridge)."
-  exit 1
-fi
-REL_BASE="https://github.com/kslive/ember/releases/download/v$VERSION"
-cat > "$DIST/latest.json" <<JSON
+# 6) 1.2 → 1.3 BRIDGE (Tauri updater): tar.gz + minisign signature + latest.json — OPTIONAL.
+#    Needs the Tauri CLI + the minisign key (interactive password). When unavailable, SKIP
+#    the bridge entirely (no tar.gz / latest.json) and still ship the native updater feed
+#    (zip+sha256) + DMG — 1.3.x users update over-the-air regardless. NEVER write a
+#    latest.json with an empty signature (every 1.2.x client would reject it).
+if command -v tauri >/dev/null 2>&1 && [ -f "$TAURI_KEY" ]; then
+  TARBALL="$DIST/$APP_NAME.app.tar.gz"
+  ( cd "$DIST" && tar czf "$APP_NAME.app.tar.gz" "$APP_NAME.app" )
+  tauri signer sign --private-key-path "$TAURI_KEY" "$TARBALL"   # writes "<tarball>.sig"
+  SIG=""; [ -f "$TARBALL.sig" ] && SIG="$(cat "$TARBALL.sig")"
+  if [ -z "$SIG" ]; then
+    echo "⚠️  Tarball signing produced no signature — removing tarball, skipping latest.json."
+    rm -f "$TARBALL"
+  else
+    REL_BASE="https://github.com/kslive/ember/releases/download/v$VERSION"
+    cat > "$DIST/latest.json" <<JSON
 {
   "version": "$VERSION",
   "notes": "Ember $VERSION — native macOS rewrite.",
@@ -79,7 +76,11 @@ cat > "$DIST/latest.json" <<JSON
   }
 }
 JSON
-echo "🌉 latest.json + $APP_NAME.app.tar.gz (Tauri 1.2 bridge)"
+    echo "🌉 latest.json + $APP_NAME.app.tar.gz (Tauri 1.2 bridge)"
+  fi
+else
+  echo "⏭  Skipping 1.2→1.3 Tauri bridge (no tauri CLI or minisign key) — shipping zip+sha256+DMG only."
+fi
 
 # 7) DMG (manual install)
 DMG="$DIST/${APP_NAME}_${VERSION}_aarch64.dmg"
@@ -88,16 +89,17 @@ hdiutil create -volname "$APP_NAME $VERSION" -srcfolder "$STAGE" -ov -format UDZ
 rm -rf "$STAGE"
 echo "💿 $(basename "$DMG")"
 
+BRIDGE_ASSETS=""
+[ -f "$DIST/latest.json" ] && BRIDGE_ASSETS="\"$DIST/$APP_NAME.app.tar.gz\" \"$DIST/latest.json\" "
 cat <<DONE
 
 ✅ Assets in $DIST:
    $APP_NAME-$VERSION.zip (+ .sha256)   ← in-app updater feed (1.3→1.4+)
-   $APP_NAME.app.tar.gz + latest.json   ← 1.2→1.3 Tauri bridge
+   $([ -f "$DIST/latest.json" ] && echo "$APP_NAME.app.tar.gz + latest.json   ← 1.2→1.3 Tauri bridge" || echo "(1.2→1.3 bridge skipped — no tauri CLI / key)")
    $(basename "$DMG")                    ← manual install
 
 To publish (review first!):
    gh release create v$VERSION -R kslive/ember -t "Ember $VERSION" \\
-     "$DIST/$APP_NAME-$VERSION.zip" "$DIST/$APP_NAME-$VERSION.zip.sha256" \\
-     "$DIST/$APP_NAME.app.tar.gz" "$DIST/latest.json" "$DMG" \\
+     "$DIST/$APP_NAME-$VERSION.zip" "$DIST/$APP_NAME-$VERSION.zip.sha256" ${BRIDGE_ASSETS}"$DMG" \\
      -n "Ember $VERSION. SHA256: $SHA"
 DONE

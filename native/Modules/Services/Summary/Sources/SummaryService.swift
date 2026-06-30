@@ -113,8 +113,9 @@ public final class SummaryService: ObservableObject {
     public func ensureLoaded(repoId: String) async {
         if loadedRepo == repoId, container != nil { return }
         status = .loading
-        let hintGB = SummaryCatalog.all.first { $0.repoId == repoId }?.ramHintGB ?? 4
-        if Self.availableMemoryGB() < Double(hintGB) {
+        let hintGB = Double(SummaryCatalog.all.first { $0.repoId == repoId }?.ramHintGB ?? 4)
+        let physGB = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
+        if hintGB > physGB * 0.62 || Self.availableMemoryGB() < hintGB {
             status = .error("low-memory")
             return
         }
@@ -147,20 +148,57 @@ public final class SummaryService: ObservableObject {
         return bytes / 1_073_741_824.0
     }
 
-    /// Generates a Markdown summary in the given language code (en/ru/zh/…).
+    /// Generates a Markdown summary in the given language code (en/ru/zh/…). A
+    /// transcript that wouldn't fit the model's context is summarized in chunks
+    /// (map) then reduced — otherwise the KV cache would silently drop the middle
+    /// of the meeting (the smallest-context model, 8B/16k, is hit first).
     public func summarize(transcript: String, languageCode: String) async -> String {
-        guard let container else { return "" }
+        guard container != nil else { return "" }
         status = .generating
 
-        let system = SummaryPrompts.system(language: languageCode)
+        let maxGen = 1536
+        let budgetTokens = max(2000, loadedContextTokens - maxGen - 1200)
+        let budgetChars = budgetTokens * 2
+
+        let raw: String
+        if transcript.count <= budgetChars {
+            raw = await generateOnce(system: SummaryPrompts.system(language: languageCode),
+                                     transcript: transcript, languageCode: languageCode, maxTokens: maxGen)
+        } else {
+            var notes: [String] = []
+            for chunk in Self.splitChunks(transcript, maxChars: budgetChars) {
+                if Task.isCancelled { break }
+                let n = await ThinkStripper.strip(generateOnce(
+                    system: SummaryPrompts.chunkSystem(language: languageCode),
+                    transcript: chunk, languageCode: languageCode, maxTokens: 1024
+                ))
+                if !n.isEmpty { notes.append(n) }
+            }
+            raw = notes.isEmpty ? "" : await generateOnce(
+                system: SummaryPrompts.system(language: languageCode),
+                transcript: notes.joined(separator: "\n"), languageCode: languageCode, maxTokens: maxGen
+            )
+        }
+
+        guard !raw.isEmpty else {
+            if case .error = status {} else { status = .error("empty") }
+            return ""
+        }
+        status = .ready
+        return SummarySanitize.clean(ThinkStripper.strip(raw), transcript: transcript)
+    }
+
+    /// One MLX generation pass. Uses `KVCacheSimple` (NO `maxKVSize`) so the
+    /// `kvBits` cache quantization actually applies — `maybeQuantizeKVCache` skips
+    /// rotating caches — keeping memory bounded WITHOUT silently dropping context.
+    private func generateOnce(system: String, transcript: String, languageCode: String, maxTokens: Int) async -> String {
+        guard let container else { return "" }
         let user = SummaryPrompts.user(transcript: transcript, language: languageCode) + "\n\n/no_think"
         let params = GenerateParameters(
-            maxTokens: 6144, maxKVSize: loadedContextTokens, kvBits: 8, quantizedKVStart: 256,
-            temperature: 0.7, topP: 0.8
+            maxTokens: maxTokens, kvBits: 8, quantizedKVStart: 256, temperature: 0.7, topP: 0.8
         )
-
         do {
-            let output = try await container.perform { (ctx: ModelContext) -> String in
+            return try await container.perform { (ctx: ModelContext) -> String in
                 let input = try await ctx.processor.prepare(
                     input: UserInput(chat: [.system(system), .user(user)])
                 )
@@ -176,12 +214,26 @@ public final class SummaryService: ObservableObject {
                 }
                 return text
             }
-            status = .ready
-            return SummarySanitize.clean(ThinkStripper.strip(output), transcript: transcript)
         } catch {
             status = .error(error.localizedDescription)
             return ""
         }
+    }
+
+    /// Splits a transcript into chunks of at most `maxChars`, breaking on line
+    /// boundaries (one transcript segment per line) so words aren't cut mid-token.
+    nonisolated static func splitChunks(_ text: String, maxChars: Int) -> [String] {
+        guard maxChars > 0 else { return [text] }
+        var chunks: [String] = []
+        var cur = ""
+        for line in text.components(separatedBy: "\n") {
+            if !cur.isEmpty, cur.count + line.count + 1 > maxChars {
+                chunks.append(cur); cur = ""
+            }
+            cur += cur.isEmpty ? line : "\n" + line
+        }
+        if !cur.isEmpty { chunks.append(cur) }
+        return chunks
     }
 
     /// Summary language = the user-selected UI language. We deliberately do NOT

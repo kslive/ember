@@ -51,9 +51,9 @@ final class AppModel: ObservableObject {
         callDetect.start()
         RecordingEngine.purgeRecordings()
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-        if !UserDefaults.standard.bool(forKey: "ember.didSeedDemo") {
-            UserDefaults.standard.set(true, forKey: "ember.didSeedDemo")
-            store.seedDemo(language: .current)
+        if !UserDefaults.standard.bool(forKey: "ember.purgedDemo") {
+            UserDefaults.standard.set(true, forKey: "ember.purgedDemo")
+            store.purgeDemo()
         }
         if store.persistenceDegraded { showToast(tr("toast.persistenceDegraded"), tone: .error) }
     }
@@ -115,6 +115,7 @@ final class AppModel: ObservableObject {
 
     func startRecording() {
         guard !isStarting, !isRecordingActive else { return }
+        route = .home
         isStarting = true
         Task {
             defer { isStarting = false }
@@ -146,11 +147,12 @@ final class AppModel: ObservableObject {
     /// Older segments are confirmed (locked); the last is a live hypothesis.
     private struct LiveState { var confirmed: [TranscriptSegment] = []; var confirmedSamples = 0; var live: [TranscriptSegment] = [] }
 
-    /// Skip transcription of a near-silent buffer — below this RMS Whisper only
-    /// hallucinates ("[музыка]"/subtitle credits) on the noise floor. Tuned to sit
-    /// above a silent tap's noise floor but below normal speech, so LIVE (which uses
-    /// lenient decode options) doesn't transcribe silence yet still shows real speech.
-    private static let silenceRMS: Float = 0.01
+    /// Skip transcription only when a window/recording is TRULY silent. Gate on PEAK
+    /// (max |sample|), NOT mean RMS: real speech mixed with pauses has a low average
+    /// RMS but clear peaks, so an RMS gate wrongly dropped the quiet-but-real mic
+    /// channel (the user spoke yet only [mac] appeared). Speech peaks ≫ 0.02; a silent
+    /// tap's noise floor peaks ≪ 0.02.
+    private static let silencePeak: Float = 0.02
 
     private func startLiveLoop(_ meetingId: String) {
         liveSegments = []
@@ -182,7 +184,7 @@ final class AppModel: ObservableObject {
         var s = state
         guard total - s.confirmedSamples > 16000 else { return s }
         let tail = tailFrom(s.confirmedSamples)
-        guard AudioLevel.rms(tail) > Self.silenceRMS else { return s }
+        guard AudioLevel.peak(tail) > Self.silencePeak else { return s }
         let base = Double(s.confirmedSamples) / 16000.0
         let segs = await transcription.transcribeSamples(tail, meetingId: meetingId, language: whisperLang())
         guard !segs.isEmpty else { return s }
@@ -232,15 +234,19 @@ final class AppModel: ObservableObject {
         defer { processingIds.remove(id); revision += 1 }
         await transcription.ensureLoaded(model: SettingsStore.currentWhisperModelId())
         let lang = whisperLang()
-        let micSegs = (micSamples.isEmpty || AudioLevel.rms(micSamples) < Self.silenceRMS)
-            ? [] : await transcription.transcribeSamples(micSamples, meetingId: id, language: lang, strict: true).map { tag($0, .mic) }
-        let sysSegs = (systemSamples.isEmpty || AudioLevel.rms(systemSamples) < Self.silenceRMS)
-            ? [] : await transcription.transcribeSamples(systemSamples, meetingId: id, language: lang, strict: true).map { tag($0, .system) }
+        let micGated = !micSamples.isEmpty && AudioLevel.peak(micSamples) >= Self.silencePeak
+        let sysGated = !systemSamples.isEmpty && AudioLevel.peak(systemSamples) >= Self.silencePeak
+        async let micRaw: [TranscriptSegment] = micGated
+            ? transcription.transcribeSamples(micSamples, meetingId: id, language: lang, strict: true) : []
+        async let sysRaw: [TranscriptSegment] = sysGated
+            ? transcription.transcribeSamples(systemSamples, meetingId: id, language: lang, strict: true) : []
+        let micSegs = await (micRaw).map { tag($0, .mic) }
+        let sysSegs = await (sysRaw).map { tag($0, .system) }
         var segs = TranscriptMerge.merge(mic: micSegs, system: sysSegs)
         if segs.isEmpty {
             let mixedURL = RecordingEngine.recordingsDir().appendingPathComponent("\(id).m4a")
             if let audioURL = await AudioMixer.mix(mic: mic, system: system, output: mixedURL) ?? mic ?? system {
-                segs = await transcription.transcribe(url: audioURL, meetingId: id, language: lang)
+                segs = await transcription.transcribe(url: audioURL, meetingId: id, language: lang, strict: false)
                 try? FileManager.default.removeItem(at: audioURL)
             }
         }
@@ -258,23 +264,28 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Generates + persists a summary. Returns false (without overwriting any existing
-    /// summary) on low-memory/empty/failed generation, surfacing a toast. Serialized:
-    /// the MLX container is single-instance, so concurrent jobs are rejected.
+    /// Generates + persists a summary using ONLY the user-selected model — no silent
+    /// fallback to a smaller (weaker) model. If the chosen model can't load (e.g. 8B on
+    /// 16GB) or returns nothing, the user gets the REAL reason via a toast. Serialized:
+    /// the MLX container is single-instance.
     @discardableResult
     private func makeSummary(meetingId id: String, text: String, repo: String) async -> Bool {
         guard !isSummarizing else { return false }
         isSummarizing = true
         defer { isSummarizing = false }
         let lang = whisperLang()
+        transcription.unload()
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
         await summary.ensureLoaded(repoId: repo)
         guard summary.isReady else {
-            showToast(tr("toast.summaryFailed"), tone: .error)
+            showToast(summaryErrorMessage(), tone: .error)
             return false
         }
         let md = await summary.summarize(transcript: text, languageCode: lang)
         guard !md.isEmpty else {
-            showToast(tr("toast.summaryFailed"), tone: .error)
+            showToast(summaryErrorMessage(), tone: .error)
             return false
         }
         store.saveSummary(meetingId: id, summary: MeetingSummary(markdown: md))
@@ -282,6 +293,16 @@ final class AppModel: ObservableObject {
         if let topic { store.rename(id, title: topic) }
         exportSummary(meetingId: id, markdown: md, title: topic)
         return true
+    }
+
+    /// Surfaces the REAL summary failure reason instead of a generic toast: a
+    /// low-memory rejection (pick a smaller model) or the underlying MLX error.
+    private func summaryErrorMessage() -> String {
+        if case let .error(reason) = summary.status {
+            if reason == "low-memory" { return tr("toast.summaryLowMemory") }
+            if !reason.isEmpty, reason != "empty" { return reason }
+        }
+        return tr("toast.summaryFailed")
     }
 
     /// Tags a transcribed segment with its capture source.

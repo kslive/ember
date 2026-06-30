@@ -18,26 +18,49 @@ final class CallDetectTests: XCTestCase {
     }
 
     func testStartFiresExactlyOnceAfterDebounce() {
-        let r = run(Array(repeating: true, count: 5))
+        let r = run([false] + Array(repeating: true, count: 5))
         XCTAssertEqual(r.events.filter { $0 == .start }.count, 1)
         XCTAssertEqual(r.events.last, .start)
         XCTAssertTrue(r.state.autoSession)
     }
 
     func testStartDoesNotFireEarly() {
-        let r = run(Array(repeating: true, count: 4))
+        let r = run([false] + Array(repeating: true, count: 4))
         XCTAssertFalse(r.events.contains(.start))
         XCTAssertFalse(r.state.autoSession)
     }
 
+    /// Rising-edge guard: input that is ALREADY active when monitoring begins
+    /// (e.g. residual capture from a just-quit instance right after launch) must
+    /// NEVER auto-start — only a genuine inactive→active transition does.
+    func testNoStartWhenActiveFromLaunch() {
+        let r = run(Array(repeating: true, count: 10))
+        XCTAssertFalse(r.events.contains(.start))
+        XCTAssertFalse(r.state.autoSession)
+        XCTAssertFalse(r.state.armed)
+    }
+
+    func testStartsOnlyAfterRisingEdge() {
+        let r = run([true, true, false] + Array(repeating: true, count: 5))
+        XCTAssertEqual(r.events.filter { $0 == .start }.count, 1)
+        XCTAssertTrue(r.state.autoSession)
+        XCTAssertTrue(r.state.armed)
+    }
+
+    func testSingleInactiveBlipArmsThenStarts() {
+        let r = run([false] + Array(repeating: true, count: 5))
+        XCTAssertTrue(r.state.armed)
+        XCTAssertEqual(r.events.filter { $0 == .start }.count, 1)
+    }
+
     func testStopNeedsSustainedInactivity() {
-        let r = run(Array(repeating: true, count: 5) + Array(repeating: false, count: 7))
+        let r = run([false] + Array(repeating: true, count: 5) + Array(repeating: false, count: 7))
         XCTAssertTrue(r.state.autoSession)
         XCTAssertFalse(r.events.contains(.end))
     }
 
     func testStopFiresAfterDebounce() {
-        let r = run(Array(repeating: true, count: 5) + Array(repeating: false, count: 8))
+        let r = run([false] + Array(repeating: true, count: 5) + Array(repeating: false, count: 8))
         XCTAssertFalse(r.state.autoSession)
         XCTAssertEqual(r.events.filter { $0 == .end }.count, 1)
         XCTAssertEqual(r.events.last, .end)
@@ -47,7 +70,7 @@ final class CallDetectTests: XCTestCase {
     /// input for a tick or two; an active tick must reset the inactivity run so
     /// the session is NOT ended.
     func testBriefInputDropDoesNotEndSession() {
-        let seq = Array(repeating: true, count: 5)
+        let seq = [false] + Array(repeating: true, count: 5)
             + Array(repeating: false, count: 3) + [true]
             + Array(repeating: false, count: 7)
         let r = run(seq)
