@@ -11,6 +11,16 @@ final class SummaryLogicTests: XCTestCase {
         XCTAssertEqual(SummaryService.summaryLanguageCode(selected: .zh), "zh")
     }
 
+    /// RAM gate is on PHYSICAL (installed) memory, not momentary free memory: a 16 GB
+    /// Mac must clear the 8B (16 GB) requirement; only genuinely small machines block.
+    func testHasEnoughRAMGate() {
+        XCTAssertTrue(SummaryService.hasEnoughRAM(minGB: 16, physicalGB: 16)) // 16GB Mac runs 8B
+        XCTAssertTrue(SummaryService.hasEnoughRAM(minGB: 16, physicalGB: 32))
+        XCTAssertFalse(SummaryService.hasEnoughRAM(minGB: 16, physicalGB: 8)) // 8GB Mac blocks 8B
+        XCTAssertTrue(SummaryService.hasEnoughRAM(minGB: 8, physicalGB: 8)) // 8GB runs 4B/1.7B
+        XCTAssertFalse(SummaryService.hasEnoughRAM(minGB: 8, physicalGB: 6))
+    }
+
     /// A short Russian transcript is frequently mis-detected as Ukrainian — the
     /// reason we use the selected language instead of `detectLanguage` in the pipeline.
     func testUkrainianPromptDiffersFromRussian() {

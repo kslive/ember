@@ -113,9 +113,9 @@ public final class SummaryService: ObservableObject {
     public func ensureLoaded(repoId: String) async {
         if loadedRepo == repoId, container != nil { return }
         status = .loading
-        let hintGB = Double(SummaryCatalog.all.first { $0.repoId == repoId }?.ramHintGB ?? 4)
+        let needGB = SummaryCatalog.all.first { $0.repoId == repoId }?.ramHintGB ?? 4
         let physGB = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
-        if hintGB > physGB * 0.62 || Self.availableMemoryGB() < hintGB {
+        if !Self.hasEnoughRAM(minGB: needGB, physicalGB: physGB) {
             status = .error("low-memory")
             return
         }
@@ -132,20 +132,14 @@ public final class SummaryService: ObservableObject {
         }
     }
 
-    /// Reclaimable RAM in GB (free + inactive + purgeable). Returns a huge value
-    /// if the query fails so we never block on an unknown.
-    nonisolated static func availableMemoryGB() -> Double {
-        var stats = vm_statistics64_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
-        let kr = withUnsafeMutablePointer(to: &stats) { ptr in
-            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
-            }
-        }
-        guard kr == KERN_SUCCESS else { return .greatestFiniteMagnitude }
-        let page = Double(vm_kernel_page_size)
-        let bytes = (Double(stats.free_count) + Double(stats.inactive_count) + Double(stats.purgeable_count)) * page
-        return bytes / 1_073_741_824.0
+    /// Can this machine run a model that needs `minGB` of RAM? Gate on PHYSICAL
+    /// (installed) memory, NOT momentary "reclaimable" free memory: on macOS the OS
+    /// keeps RAM active/compressed and frees it on demand, so a reclaimable heuristic
+    /// under-reports and falsely blocked capable Macs (even 32–64 GB). Matches how
+    /// LM Studio / Ollama gate. The 0.5 slack absorbs the small reserved slice so a
+    /// 16 GB Mac clears a 16 GB requirement.
+    nonisolated static func hasEnoughRAM(minGB: Int, physicalGB: Double) -> Bool {
+        physicalGB >= Double(minGB) - 0.5
     }
 
     /// Generates a Markdown summary in the given language code (en/ru/zh/…). A
