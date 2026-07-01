@@ -128,12 +128,25 @@ public final class CallDetectService: ObservableObject {
             guard AudioObjectGetPropertyData(proc, &pidAddr, 0, nil, &pSize, &pid) == noErr else { continue }
 
             if pid == selfPid { continue }
-            guard let app = NSRunningApplication(processIdentifier: pid) else { continue }
-            if let selfBundle, app.bundleIdentifier == selfBundle { continue }
+            // Skip only genuinely DEAD/stale pids (a leftover CoreAudio object). A LIVE
+            // process using input is a real call EVEN IF it has no NSRunningApplication —
+            // browser audio helpers (Google Meet, Zoom-web) and other non-GUI audio
+            // clients have no GUI app, and the old `guard let app = NSRunningApplication`
+            // wrongly skipped them, breaking auto-start for browser calls.
+            if !Self.isProcessAlive(pid) { continue }
+            if let selfBundle, NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == selfBundle { continue }
             if isHelper(pid) { continue }
             return true
         }
         return false
+    }
+
+    /// A pid is alive if `kill(pid, 0)` succeeds (exists, same user) or fails with
+    /// EPERM (exists, different user). ESRCH means the process is gone → stale audio
+    /// object we should ignore. Cheaper and correct where NSRunningApplication (GUI
+    /// apps only) is wrong.
+    public nonisolated static func isProcessAlive(_ pid: pid_t) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
     }
 
     /// Excludes background helper processes. The native app runs MLX + WhisperKit

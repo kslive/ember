@@ -53,6 +53,13 @@ final class CallDetectTests: XCTestCase {
         XCTAssertEqual(r.events.filter { $0 == .start }.count, 1)
     }
 
+    /// Detection counts LIVE processes (incl. non-GUI browser audio helpers) and skips
+    /// only genuinely dead pids — the fix for browser-call auto-start.
+    func testIsProcessAlive() {
+        XCTAssertTrue(CallDetectService.isProcessAlive(getpid()))
+        XCTAssertFalse(CallDetectService.isProcessAlive(999_999))
+    }
+
     func testStopNeedsSustainedInactivity() {
         let r = run([false] + Array(repeating: true, count: 5) + Array(repeating: false, count: 7))
         XCTAssertTrue(r.state.autoSession)
