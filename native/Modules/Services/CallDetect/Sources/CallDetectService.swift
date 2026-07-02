@@ -40,7 +40,10 @@ public final class CallDetectService: ObservableObject {
     private var timer: Timer?
     private var state = CallDetectState()
     private static let log = Logger(subsystem: "com.kslff.ember", category: "calldetect")
-    private let debounceSeconds = 5
+    /// 3s (was 5): recording starts ~4-5s into a call instead of 6-8s. Safe to lower
+    /// now that a false start self-destructs — pid-continuity blocks blip chaining,
+    /// speech daemons are ignored, and detector-ended sessions <25s are discarded.
+    private let debounceSeconds = 3
     /// Grace before ending a session: a brief input drop (plugging headphones
     /// mid-call re-opens the other app's input; participant mute) must NOT stop
     /// the recording. Only sustained silence ends it.

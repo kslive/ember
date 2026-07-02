@@ -150,12 +150,13 @@ public final class TranscriptionService: ObservableObject {
         guard let kit, !samples.isEmpty else { return [] }
         do {
             let results = try await kit.transcribe(audioArray: samples, decodeOptions: Self.decodeOptions(language: language, strict: strict))
-            return results.flatMap(\.segments).compactMap { s in
+            let segs = results.flatMap(\.segments).compactMap { s -> TranscriptSegment? in
                 let text = Self.cleanText(s.text)
                 guard Self.hasSpeech(text), !Self.isHallucination(text) else { return nil }
                 return TranscriptSegment(meetingId: meetingId, text: text,
                                          startSeconds: Double(s.start), endSeconds: Double(s.end))
             }
+            return Self.collapseRepeats(segs)
         } catch {
             return []
         }
@@ -184,6 +185,27 @@ public final class TranscriptionService: ObservableObject {
     /// near-silence (which otherwise showed up as empty "[С]" transcript rows).
     public nonisolated static func hasSpeech(_ text: String) -> Bool {
         text.rangeOfCharacter(from: .alphanumerics) != nil
+    }
+
+    /// Collapses a run of consecutive segments with IDENTICAL normalized text into one
+    /// (start of the first, end of the last). Whisper's repetition loop on quiet/music
+    /// audio emits dozens of degenerate one-word segments ("и" ×12) from a single decode
+    /// window — per-segment thresholds and the merge dedup (< 3 words) can't catch them.
+    /// Real speech is untouched: adjacent utterances are practically never verbatim-equal.
+    public nonisolated static func collapseRepeats(_ segs: [TranscriptSegment]) -> [TranscriptSegment] {
+        var out: [TranscriptSegment] = []
+        var lastNorm = ""
+        for seg in segs {
+            let norm = seg.text.lowercased()
+                .trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
+            if !out.isEmpty, norm == lastNorm {
+                out[out.count - 1].endSeconds = max(out[out.count - 1].endSeconds, seg.endSeconds)
+                continue
+            }
+            out.append(seg)
+            lastNorm = norm
+        }
+        return out
     }
 
     /// Strips WhisperKit control/timestamp tokens (`<|...|>`) that can leak into
@@ -244,7 +266,7 @@ public final class TranscriptionService: ObservableObject {
                 }
             }
             status = .ready
-            return segments
+            return Self.collapseRepeats(segments)
         } catch {
             status = .error(error.localizedDescription)
             return []

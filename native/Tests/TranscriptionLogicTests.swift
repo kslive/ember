@@ -1,3 +1,4 @@
+import Core
 @testable import TranscriptionService
 import WhisperKit
 import XCTest
@@ -62,6 +63,33 @@ final class TranscriptionLogicTests: XCTestCase {
         let options = TranscriptionService.decodeOptions(language: nil, strict: false)
         XCTAssertTrue(options.skipSpecialTokens)
         XCTAssertNil(options.language)
+    }
+
+    private func seg(_ text: String, _ start: Double, _ end: Double) -> TranscriptSegment {
+        TranscriptSegment(meetingId: "m", text: text, startSeconds: start, endSeconds: end)
+    }
+
+    func testCollapseRepeatsDegenerateRun() {
+        let run = (0 ..< 12).map { seg("и", Double($0), Double($0) + 0.5) }
+        let out = TranscriptionService.collapseRepeats(run)
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out[0].startSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(out[0].endSeconds, 11.5, accuracy: 0.001)
+    }
+
+    func testCollapseRepeatsNormalizesCaseAndPunctuation() {
+        let out = TranscriptionService.collapseRepeats([seg("И.", 0, 1), seg("и", 1, 2), seg(" и ", 2, 3)])
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out[0].endSeconds, 3, accuracy: 0.001)
+    }
+
+    func testCollapseRepeatsKeepsAlternatingAndNormalSpeech() {
+        let alt = [seg("и", 0, 1), seg("да", 1, 2), seg("и", 2, 3)]
+        XCTAssertEqual(TranscriptionService.collapseRepeats(alt).count, 3)
+        let speech = [seg("привет как дела", 0, 2), seg("нормально а у тебя", 2, 4)]
+        XCTAssertEqual(TranscriptionService.collapseRepeats(speech).count, 2)
+        XCTAssertTrue(TranscriptionService.collapseRepeats([]).isEmpty)
+        XCTAssertEqual(TranscriptionService.collapseRepeats([seg("одно", 0, 1)]).count, 1)
     }
 
     func testHasSpeechFiltersPunctuationOnly() {
