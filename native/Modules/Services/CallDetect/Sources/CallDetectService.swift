@@ -1,7 +1,9 @@
 import AppKit
 import Combine
 import CoreAudio
+import Darwin
 import Foundation
+import OSLog
 
 /// Debounce counters for call detection (value type → unit-testable).
 public struct CallDetectState: Equatable, Sendable {
@@ -13,6 +15,12 @@ public struct CallDetectState: Equatable, Sendable {
     /// residual capture from a just-quit Ember instance right after launch) can't
     /// trigger a false recording. Only a genuine inactive→active rising edge starts.
     public var armed = false
+    /// Pids that carried the current active run on the previous tick. The start
+    /// debounce requires PID CONTINUITY: a run only keeps counting while at least
+    /// one pid persists from tick to tick. Without it, short mic blips from
+    /// DIFFERENT processes (a messenger's notification-sound engine, then a speech
+    /// daemon) chained into one phantom 5-second "call".
+    public var activePids: Set<pid_t> = []
     public init() {}
 }
 
@@ -31,6 +39,7 @@ public final class CallDetectService: ObservableObject {
 
     private var timer: Timer?
     private var state = CallDetectState()
+    private static let log = Logger(subsystem: "com.kslff.ember", category: "calldetect")
     private let debounceSeconds = 5
     /// Grace before ending a session: a brief input drop (plugging headphones
     /// mid-call re-opens the other app's input; participant mute) must NOT stop
@@ -56,28 +65,42 @@ public final class CallDetectService: ObservableObject {
     }
 
     private func tick() {
-        let active = Self.externalInputActive()
-        callActive = active
-        let (next, event) = CallDetectService.step(state, active: active,
+        let pids = Self.externalInputPids()
+        callActive = !pids.isEmpty
+        if !pids.isEmpty, state.activeSeconds == 0 {
+            let who = pids.map { "\($0):\(Self.processName($0))" }.joined(separator: " ")
+            Self.log.info("input rising edge: \(who, privacy: .public)")
+        }
+        let (next, event) = CallDetectService.step(state, activePids: pids,
                                                    startDebounce: debounceSeconds,
                                                    stopDebounce: stopDebounceSeconds)
         state = next
         switch event {
-        case .start: onCallStart?()
-        case .end: onCallEnd?()
+        case .start:
+            let who = pids.map { "\($0):\(Self.processName($0))" }.joined(separator: " ")
+            Self.log.info("call START triggered by: \(who, privacy: .public)")
+            onCallStart?()
+        case .end:
+            Self.log.info("call END (sustained inactivity)")
+            onCallEnd?()
         case .none: break
         }
     }
 
-    /// Pure debounce state machine (extracted for testing). A sustained `active`
-    /// run of `startDebounce` ticks starts a session; ending needs `stopDebounce`
-    /// ticks of sustained inactivity (any active tick resets the inactive run).
-    public nonisolated static func step(_ s: CallDetectState, active: Bool,
+    /// Pure debounce state machine (extracted for testing). A sustained active run of
+    /// `startDebounce` ticks WITH PID CONTINUITY (each tick's pid set intersects the
+    /// previous tick's) starts a session; a run carried by disjoint processes restarts
+    /// the count — different apps' short mic blips can't chain into one phantom call.
+    /// Ending needs `stopDebounce` ticks of sustained inactivity (any active tick
+    /// resets the inactive run).
+    public nonisolated static func step(_ s: CallDetectState, activePids: Set<pid_t>,
                                         startDebounce: Int, stopDebounce: Int) -> (CallDetectState, CallDetectEvent) {
         var st = s
         var event: CallDetectEvent = .none
-        if active {
-            st.activeSeconds += 1
+        if !activePids.isEmpty {
+            let continues = st.activeSeconds == 0 || !st.activePids.isDisjoint(with: activePids)
+            st.activeSeconds = continues ? st.activeSeconds + 1 : 1
+            st.activePids = activePids
             st.inactiveSeconds = 0
             if st.armed, st.activeSeconds >= startDebounce, !st.autoSession {
                 st.autoSession = true
@@ -86,6 +109,7 @@ public final class CallDetectService: ObservableObject {
         } else {
             st.armed = true
             st.activeSeconds = 0
+            st.activePids = []
             st.inactiveSeconds += 1
             if st.autoSession, st.inactiveSeconds >= stopDebounce {
                 st.autoSession = false
@@ -95,8 +119,8 @@ public final class CallDetectService: ObservableObject {
         return (st, event)
     }
 
-    /// True if any *other* process is currently capturing audio input.
-    static func externalInputActive() -> Bool {
+    /// Pids of all *other* live processes currently capturing audio input.
+    static func externalInputPids() -> Set<pid_t> {
         let selfPid = ProcessInfo.processInfo.processIdentifier
         let selfBundle = Bundle.main.bundleIdentifier
         let system = AudioObjectID(kAudioObjectSystemObject)
@@ -107,11 +131,12 @@ public final class CallDetectService: ObservableObject {
             mElement: kAudioObjectPropertyElementMain
         )
         var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(system, &listAddr, 0, nil, &size) == noErr, size > 0 else { return false }
+        guard AudioObjectGetPropertyDataSize(system, &listAddr, 0, nil, &size) == noErr, size > 0 else { return [] }
         let count = Int(size) / MemoryLayout<AudioObjectID>.size
         var ids = [AudioObjectID](repeating: 0, count: count)
-        guard AudioObjectGetPropertyData(system, &listAddr, 0, nil, &size, &ids) == noErr else { return false }
+        guard AudioObjectGetPropertyData(system, &listAddr, 0, nil, &size, &ids) == noErr else { return [] }
 
+        var pids: Set<pid_t> = []
         for proc in ids {
             var running: UInt32 = 0
             var rSize = UInt32(MemoryLayout<UInt32>.size)
@@ -142,10 +167,33 @@ public final class CallDetectService: ObservableObject {
             // wrongly skipped them, breaking auto-start for browser calls.
             if !Self.isProcessAlive(pid) { continue }
             if let selfBundle, NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == selfBundle { continue }
+            if isSpeechDaemon(pid) { continue }
             if isHelper(pid) { continue }
-            return true
+            pids.insert(pid)
         }
-        return false
+        return pids
+    }
+
+    /// System speech/accessibility daemons are NEVER a call, but they open the mic
+    /// for 10–20s bursts: Siri "Announce Notifications" listens for a spoken reply
+    /// after reading a push (corespeechd/assistantd), dictation, Sound Recognition
+    /// (heard). These bursts phantom-triggered auto-record when pushes arrived.
+    /// Matched by exact process name (daemons have no NSRunningApplication).
+    private static let speechDaemonNames: Set<String> = [
+        "corespeechd", "assistantd", "heard", "localspeechrecognitiond", "siriactationd"
+    ]
+    private static func isSpeechDaemon(_ pid: pid_t) -> Bool {
+        speechDaemonNames.contains(processName(pid).lowercased())
+    }
+
+    /// Best-effort process name for diagnostics + daemon filtering: proc_name works
+    /// for daemons/helpers where NSRunningApplication (GUI apps only) returns nil.
+    public nonisolated static func processName(_ pid: pid_t) -> String {
+        var buf = [CChar](repeating: 0, count: 4 * Int(MAXCOMLEN))
+        if proc_name(pid, &buf, UInt32(buf.count)) > 0 {
+            return String(cString: buf)
+        }
+        return NSRunningApplication(processIdentifier: pid)?.localizedName ?? "pid\(pid)"
     }
 
     /// A pid is alive if `kill(pid, 0)` succeeds (exists, same user) or fails with

@@ -109,7 +109,7 @@ final class AppModel: ObservableObject {
 
     private func autoStopFromCall() {
         guard isRecordingActive, autoStarted else { return }
-        stopRecording(language: .current)
+        stopRecording(language: .current, discardIfPhantom: true)
     }
 
     var isRecordingActive: Bool {
@@ -253,13 +253,33 @@ final class AppModel: ObservableObject {
         AppLanguage.current.rawValue
     }
 
-    func stopRecording(language: AppLanguage) {
+    /// An AUTO session shorter than this is a phantom (a push woke some app's
+    /// full-duplex sound engine / a speech daemon held the mic for 10–20s), not a
+    /// call — real calls run minutes. Discarded instead of saved. Manual recordings
+    /// are never discarded.
+    private static let phantomAutoSeconds: TimeInterval = 25
+
+    /// `discardIfPhantom` is passed ONLY by the call-detect auto-stop: a detector-ended
+    /// auto session shorter than the threshold is a push/daemon mic-blip, not a call.
+    /// A USER-pressed stop always saves — even a short auto-started recording.
+    func stopRecording(language: AppLanguage, discardIfPhantom: Bool = false) {
         let live = liveTask
         liveTask?.cancel()
         liveTask = nil
         let liveFinal = liveSegments
         liveSegments = []
         let (mic, system) = engine.stop()
+        let elapsed = engine.elapsed
+        if discardIfPhantom, autoStarted, elapsed < Self.phantomAutoSeconds {
+            Self.log.info("phantom auto session (\(elapsed, format: .fixed(precision: 1), privacy: .public)s) — discarded")
+            if let mic { try? FileManager.default.removeItem(at: mic) }
+            if let system { try? FileManager.default.removeItem(at: system) }
+            engine.reset()
+            recordingId = nil
+            autoStarted = false
+            showToast(tr("toast.autoDiscarded"), tone: .info)
+            return
+        }
         let micSamples = engine.liveSamples()
         let systemSamples = engine.systemSamples()
         let id = recordingId ?? UUID().uuidString

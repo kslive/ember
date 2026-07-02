@@ -4,17 +4,23 @@ import XCTest
 /// Unit tests for the call-detection debounce state machine (`CallDetectService.step`).
 /// Covers the headphones scenario: a brief input drop mid-call must NOT end the session.
 final class CallDetectTests: XCTestCase {
-    /// Drive a sequence of active/inactive ticks through the pure state machine.
-    private func run(_ ticks: [Bool], start: Int = 5, stop: Int = 8)
+    /// Drive a sequence of per-tick active pid sets through the pure state machine.
+    private func runPids(_ ticks: [Set<pid_t>], start: Int = 5, stop: Int = 8)
         -> (state: CallDetectState, events: [CallDetectEvent]) {
         var s = CallDetectState()
         var events: [CallDetectEvent] = []
-        for a in ticks {
-            let (ns, ev) = CallDetectService.step(s, active: a, startDebounce: start, stopDebounce: stop)
+        for pids in ticks {
+            let (ns, ev) = CallDetectService.step(s, activePids: pids, startDebounce: start, stopDebounce: stop)
             s = ns
             events.append(ev)
         }
         return (s, events)
+    }
+
+    /// Bool convenience: active ticks are carried by one steady pid (42).
+    private func run(_ ticks: [Bool], start: Int = 5, stop: Int = 8)
+        -> (state: CallDetectState, events: [CallDetectEvent]) {
+        runPids(ticks.map { $0 ? [42] : [] }, start: start, stop: stop)
     }
 
     func testStartFiresExactlyOnceAfterDebounce() {
@@ -104,5 +110,32 @@ final class CallDetectTests: XCTestCase {
         let r = run(seq)
         XCTAssertFalse(r.events.contains(.start))
         XCTAssertFalse(r.state.autoSession)
+    }
+
+    /// PID continuity: short mic blips from DIFFERENT processes (messenger sound
+    /// engine 2s, then a speech daemon 3s) must NOT chain into one phantom start.
+    func testDisjointPidBlipsDoNotChain() {
+        let seq: [Set<pid_t>] = [[], [1], [1], [2], [2], [2], [3], [3]]
+        let r = runPids(seq)
+        XCTAssertFalse(r.events.contains(.start))
+        XCTAssertFalse(r.state.autoSession)
+    }
+
+    /// A real call where a second process joins/hands off with OVERLAP keeps the
+    /// run counting (browser helper pid changes mid-ramp are not a reset).
+    func testOverlappingPidHandoffKeepsCounting() {
+        let seq: [Set<pid_t>] = [[], [1], [1, 2], [2], [2], [2]]
+        let r = runPids(seq)
+        XCTAssertEqual(r.events.filter { $0 == .start }.count, 1)
+        XCTAssertTrue(r.state.autoSession)
+    }
+
+    /// A disjoint pid switch RESTARTS the count — and a sustained run by the new
+    /// pid still starts a session on its own merit.
+    func testDisjointSwitchRestartsThenStarts() {
+        let seq: [Set<pid_t>] = [[], [1], [1], [7], [7], [7], [7], [7]]
+        let r = runPids(seq)
+        XCTAssertEqual(r.events.filter { $0 == .start }.count, 1)
+        XCTAssertEqual(r.events.last, .start)
     }
 }

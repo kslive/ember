@@ -13,7 +13,7 @@ and produces a short summary — entirely on your Mac. Nothing is uploaded.
 
 ![macOS](https://img.shields.io/badge/macOS-14.4%2B-000?style=flat-square&logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000?style=flat-square)
-![version](https://img.shields.io/badge/version-1.4.0-f97316?style=flat-square)
+![version](https://img.shields.io/badge/version-1.4.1-f97316?style=flat-square)
 ![local](https://img.shields.io/badge/100%25-on--device-22c55e?style=flat-square)
 
 <img src="assets/hero.en.png" width="900" alt="Ember"/>
@@ -49,7 +49,7 @@ folder you pick — for example, an Obsidian vault.
 
 Requires **macOS 14.4+** on **Apple Silicon**.
 
-1. Download `Ember_1.4.0_aarch64.dmg` from the [Releases](../../releases/latest) page.
+1. Download `Ember_1.4.1_aarch64.dmg` from the [Releases](../../releases/latest) page.
 2. Drag **Ember.app** into **Applications**.
 3. The app is ad-hoc signed (not notarized), so the first launch is blocked. Either
    right-click **Ember.app → Open → Open**, or run:

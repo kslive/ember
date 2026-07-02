@@ -40,6 +40,16 @@ final class TranscriptionLogicTests: XCTestCase {
         XCTAssertFalse(TranscriptionService.isHallucination("музыка для релаксации и хорошего настроения вечером"))
     }
 
+    /// YouTube-credits hallucinations detected ANYWHERE in the segment — the phantom
+    /// recording produced "Субтитры создавал DimaTorzok" which slipped past the
+    /// prefix+18 window and even reached the summary.
+    func testHallucinationSubstringMarkers() {
+        XCTAssertTrue(TranscriptionService.isHallucination("Субтитры создавал DimaTorzok"))
+        XCTAssertTrue(TranscriptionService.isHallucination("Субтитры сделал DimaTorzok"))
+        XCTAssertTrue(TranscriptionService.isHallucination("Subtitles by the Amara.org community"))
+        XCTAssertFalse(TranscriptionService.isHallucination("нужно поправить субтитры к ролику до пятницы обязательно"))
+    }
+
     func testDecodeOptionsStrictSetsThresholds() {
         let options = TranscriptionService.decodeOptions(language: "ru", strict: true)
         XCTAssertTrue(options.skipSpecialTokens)

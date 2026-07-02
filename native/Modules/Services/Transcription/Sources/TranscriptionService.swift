@@ -202,12 +202,21 @@ public final class TranscriptionService: ObservableObject {
         "продолжение следует", "спасибо за просмотр", "спасибо за внимание",
         "подписывайтесь", "thanks for watching", "subscribe"
     ]
+    /// Tokens so specific to Whisper's YouTube-credits training data that their
+    /// presence ANYWHERE marks a hallucination ("Субтитры создавал DimaTorzok" slipped
+    /// past the prefix rule — 28 chars > prefix+18 window). Never occur in real speech.
+    private static let hallucinationSubstrings = [
+        "dimatorzok", "торзок", "amara.org", "субтитры создавал", "субтитры сделал"
+    ]
     nonisolated static func isHallucination(_ text: String) -> Bool {
         let trimSet = CharacterSet(charactersIn: " []()【】.,!?…—-*\"'«»\n\t")
         let n = text.lowercased().trimmingCharacters(in: trimSet)
         for m in hallucinationMarkers {
             if n == m { return true }
             if n.hasPrefix(m), n.count <= m.count + 18 { return true }
+        }
+        for s in hallucinationSubstrings where n.contains(s) {
+            return true
         }
         return false
     }
