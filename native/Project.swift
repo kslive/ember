@@ -8,8 +8,8 @@ let baseSettings: SettingsDictionary = [
     "DEVELOPMENT_TEAM": "",
     "ENABLE_HARDENED_RUNTIME": "YES",
     "SWIFT_VERSION": "5.0",
-    "MARKETING_VERSION": "1.3.4",
-    "CURRENT_PROJECT_VERSION": "5",
+    "MARKETING_VERSION": "1.4.0",
+    "CURRENT_PROJECT_VERSION": "6",
     "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
 ]
 
@@ -56,6 +56,9 @@ let persistenceService = mod("PersistenceService", path: "Modules/Services/Persi
 ])
 let updaterService = mod("UpdaterService", path: "Modules/Services/Updater", deps: [
     .target(name: "Core"),
+])
+let diarizationService = mod("DiarizationService", path: "Modules/Services/Diarization", deps: [
+    .target(name: "Core"), .external(name: "FluidAudio"),
 ])
 
 let onboardingFeature = mod("OnboardingFeature", path: "Modules/Features/Onboarding", deps: [
@@ -132,6 +135,7 @@ let app = Target.target(
         .target(name: "SummaryService"),
         .target(name: "PersistenceService"),
         .target(name: "UpdaterService"),
+        .target(name: "DiarizationService"),
         .target(name: "OnboardingFeature"),
         .target(name: "RecordingFeature"),
         .target(name: "MeetingsFeature"),
@@ -167,6 +171,7 @@ let project = Project(
     targets: [
         core, designSystem,
         audioService, callDetectService, transcriptionService, summaryService, persistenceService, updaterService,
+        diarizationService,
         onboardingFeature, recordingFeature, meetingsFeature, settingsFeature,
         app, tests,
     ],

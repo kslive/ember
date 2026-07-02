@@ -53,25 +53,19 @@ public enum LiveMerge {
 }
 
 public enum TranscriptMerge {
-    /// Merges the separately-transcribed mic and system segments into one timeline
-    /// and drops near-duplicates. Without headphones the mic picks up the speaker
-    /// output (acoustic bleed), so the same speech is transcribed by BOTH passes —
-    /// this collapses those duplicates while keeping genuinely distinct, simultaneous
-    /// speech (different words at the same time) and short repeated backchannels.
+    /// Merges the separately-transcribed mic and system passes into one timeline,
+    /// dropping near-duplicates caused by acoustic bleed. Without headphones the mic
+    /// picks up the speaker output, so the other side's speech is transcribed by BOTH
+    /// passes.
     ///
-    /// A segment is a duplicate of an already-kept one when their starts are within
-    /// `window` seconds AND their word sets overlap by ≥ `threshold` (Jaccard). Only
-    /// segments with ≥ `minWords` words are eligible (short "да"/"раз" never collapse).
-    /// Time-ordered interleave of mic + system WITHOUT dedup — for the LIVE monitor.
-    /// Live must always SHOW both channels ([mic] = me, [mac] = the other side) so the
-    /// user can see the mic is capturing; without headphones the mic picks up speaker
-    /// bleed and the dedup in `merge` would otherwise (non-deterministically, via the
-    /// unstable equal-timestamp sort) drop the mic copy and leave only [mac]. The FINAL
-    /// transcript still uses `merge` (dedup) for a clean saved result.
-    public static func interleave(mic: [TranscriptSegment], system: [TranscriptSegment]) -> [TranscriptSegment] {
-        (mic + system).sorted { $0.startSeconds < $1.startSeconds }
-    }
-
+    /// SYSTEM WINS: system segments are authoritative for the "other side" and are
+    /// processed first; a mic segment that duplicates any already-kept segment (starts
+    /// within `window` seconds AND word-set Jaccard ≥ `threshold`, both ≥ `minWords`
+    /// words) is dropped as bleed. This guarantees the other side's audio is labeled
+    /// [С] (system) and NEVER mislabeled [Я] (mic bleed). Genuinely distinct
+    /// simultaneous speech (different words at the same time → low Jaccard) and short
+    /// backchannels (< minWords) are kept. Used for BOTH the live monitor and the final
+    /// saved transcript.
     public static func merge(
         mic: [TranscriptSegment],
         system: [TranscriptSegment],
@@ -79,17 +73,18 @@ public enum TranscriptMerge {
         threshold: Double = 0.6,
         minWords: Int = 3
     ) -> [TranscriptSegment] {
-        let all = (mic + system).sorted { $0.startSeconds < $1.startSeconds }
+        let ordered = system.sorted { $0.startSeconds < $1.startSeconds }
+            + mic.sorted { $0.startSeconds < $1.startSeconds }
         var kept: [TranscriptSegment] = []
         var keptInfo: [(start: Double, tokens: Set<String>)] = []
-        for seg in all {
+        for seg in ordered {
             let tokens = tokenize(seg.text)
             if tokens.count >= minWords {
                 var isDup = false
-                for info in keptInfo.reversed() {
-                    if seg.startSeconds - info.start > window { break }
+                for info in keptInfo where abs(seg.startSeconds - info.start) <= window {
                     if info.tokens.count >= minWords, jaccard(tokens, info.tokens) >= threshold {
-                        isDup = true; break
+                        isDup = true
+                        break
                     }
                 }
                 if isDup { continue }
@@ -97,7 +92,7 @@ public enum TranscriptMerge {
             kept.append(seg)
             keptInfo.append((seg.startSeconds, tokens))
         }
-        return kept
+        return kept.sorted { $0.startSeconds < $1.startSeconds }
     }
 
     /// Lowercased alphanumeric word set (handles Latin + Cyrillic; punctuation/markers

@@ -152,7 +152,7 @@ public final class TranscriptionService: ObservableObject {
             let results = try await kit.transcribe(audioArray: samples, decodeOptions: Self.decodeOptions(language: language, strict: strict))
             return results.flatMap(\.segments).compactMap { s in
                 let text = Self.cleanText(s.text)
-                guard !text.isEmpty, !Self.isHallucination(text) else { return nil }
+                guard Self.hasSpeech(text), !Self.isHallucination(text) else { return nil }
                 return TranscriptSegment(meetingId: meetingId, text: text,
                                          startSeconds: Double(s.start), endSeconds: Double(s.end))
             }
@@ -177,6 +177,13 @@ public final class TranscriptionService: ObservableObject {
         }
         if let language { o.language = language }
         return o
+    }
+
+    /// True when the cleaned text carries real speech (≥ one letter/digit). Filters
+    /// punctuation-only segments like "-", "—", "…" that Whisper emits on music /
+    /// near-silence (which otherwise showed up as empty "[С]" transcript rows).
+    public nonisolated static func hasSpeech(_ text: String) -> Bool {
+        text.rangeOfCharacter(from: .alphanumerics) != nil
     }
 
     /// Strips WhisperKit control/timestamp tokens (`<|...|>`) that can leak into
@@ -218,7 +225,7 @@ public final class TranscriptionService: ObservableObject {
             for result in results {
                 for s in result.segments {
                     let text = Self.cleanText(s.text)
-                    guard !text.isEmpty, !Self.isHallucination(text) else { continue }
+                    guard Self.hasSpeech(text), !Self.isHallucination(text) else { continue }
                     segments.append(TranscriptSegment(
                         meetingId: meetingId,
                         text: text,

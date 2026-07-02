@@ -141,6 +141,9 @@ public struct SettingsView: View {
         settingRow(locale.t("settings.recording.notifyOnStart"), locale.t("settings.recording.notifyOnStart.desc")) {
             EmberToggle(isOn: $settings.notifyOnStart)
         }
+        settingRow(locale.t("settings.recording.diarization"), locale.t("settings.recording.diarization.desc")) {
+            EmberToggle(isOn: $settings.diarizationEnabled)
+        }
         card {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {

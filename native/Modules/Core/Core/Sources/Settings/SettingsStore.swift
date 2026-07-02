@@ -13,6 +13,7 @@ public final class SettingsStore: ObservableObject {
     public static let exportFolderKey = "ember.exportFolder"
     public static let micDeviceKey = "ember.micDevice"
     public static let systemDeviceKey = "ember.systemDevice"
+    public static let diarizationKey = "ember.diarization"
 
     @Published public var summaryModelId: String {
         didSet { UserDefaults.standard.set(summaryModelId, forKey: Self.summaryKey) }
@@ -49,6 +50,11 @@ public final class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(preferredSystemUID, forKey: Self.systemDeviceKey) }
     }
 
+    /// Distinguish different remote voices ("Собеседник 1/2/3") via on-device diarization.
+    @Published public var diarizationEnabled: Bool {
+        didSet { UserDefaults.standard.set(diarizationEnabled, forKey: Self.diarizationKey) }
+    }
+
     public init() {
         summaryModelId = UserDefaults.standard.string(forKey: Self.summaryKey) ?? SummaryCatalog.defaultId
         whisperModelId = UserDefaults.standard.string(forKey: Self.whisperKey) ?? TranscriptionCatalog.defaultId
@@ -58,6 +64,7 @@ public final class SettingsStore: ObservableObject {
         exportFolderPath = UserDefaults.standard.string(forKey: Self.exportFolderKey) ?? Self.defaultExportFolder()
         preferredMicUID = UserDefaults.standard.string(forKey: Self.micDeviceKey) ?? ""
         preferredSystemUID = UserDefaults.standard.string(forKey: Self.systemDeviceKey) ?? ""
+        diarizationEnabled = (UserDefaults.standard.object(forKey: Self.diarizationKey) as? Bool) ?? true
     }
 
     public static func currentSummaryModelId() -> String {
@@ -80,6 +87,10 @@ public final class SettingsStore: ObservableObject {
 
     public static func autoSummaryOn() -> Bool {
         (UserDefaults.standard.object(forKey: autoSummaryKey) as? Bool) ?? true
+    }
+
+    public static func diarizationOn() -> Bool {
+        (UserDefaults.standard.object(forKey: diarizationKey) as? Bool) ?? true
     }
 
     /// Preferred microphone device UID, or nil for the system default.

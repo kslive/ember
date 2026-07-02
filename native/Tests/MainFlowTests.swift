@@ -109,11 +109,14 @@ final class MainFlowTests: XCTestCase {
         XCTAssertEqual(TranscriptMerge.merge(mic: mic, system: sys).map(\.text), ["sys early", "mic late"])
     }
 
-    func testMergeDropsAcousticBleedDuplicate() {
-        let mic = [seg("Если взять Ninja Gaiden 4 который вышел в 2025 году", 0, 4)]
-        let sys = [seg("Если взять Ниндзи Гайден 4 который вышел в 2025 году", 1, 5)]
+    func testMergeDropsAcousticBleedKeepingSystem() {
+        let mic = [TranscriptSegment(meetingId: "m", text: "Если взять Ninja Gaiden 4 который вышел в 2025 году",
+                                     startSeconds: 0, endSeconds: 4, source: .mic)]
+        let sys = [TranscriptSegment(meetingId: "m", text: "Если взять Ниндзи Гайден 4 который вышел в 2025 году",
+                                     startSeconds: 1, endSeconds: 5, source: .system)]
         let merged = TranscriptMerge.merge(mic: mic, system: sys)
         XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.source, .system)
     }
 
     func testMergeKeepsDistinctSimultaneousSpeech() {
@@ -139,19 +142,6 @@ final class MainFlowTests: XCTestCase {
         XCTAssertEqual(TranscriptMerge.merge(mic: [seg("only mic here now", 0, 2)], system: []).count, 1)
     }
 
-    func testInterleaveKeepsBothChannelsNoDedup() {
-        let mic = [seg("привет это я говорю в микрофон", 1, 3)]
-        let sys = [seg("привет это я говорю в микрофон", 1, 3)]
-        let r = TranscriptMerge.interleave(mic: mic, system: sys)
-        XCTAssertEqual(r.count, 2)
-    }
-
-    func testInterleaveSortsByTime() {
-        let mic = [seg("позже", 5, 6)]
-        let sys = [seg("раньше", 0, 1)]
-        XCTAssertEqual(TranscriptMerge.interleave(mic: mic, system: sys).map(\.text), ["раньше", "позже"])
-    }
-
     func testMergePreservesSource() {
         let mic = [TranscriptSegment(meetingId: "m", text: "my own unique words here", startSeconds: 0, endSeconds: 2, source: .mic)]
         let sys = [TranscriptSegment(meetingId: "m", text: "the other participant speaking", startSeconds: 1, endSeconds: 3, source: .system)]
@@ -173,6 +163,45 @@ final class MainFlowTests: XCTestCase {
         XCTAssertEqual(TranscriptMerge.jaccard(["a"], ["b"]), 0, accuracy: 0.0001)
         XCTAssertEqual(TranscriptMerge.jaccard([], ["a"]), 0, accuracy: 0.0001)
         XCTAssertEqual(TranscriptMerge.jaccard(["a", "b"], ["a"]), 0.5, accuracy: 0.0001)
+    }
+
+    func testLeadingSilence() {
+        let loud: Float = 0.5, quiet: Float = 0.001
+        var buf = [Float](repeating: quiet, count: 100)
+        buf.append(contentsOf: [loud, loud])
+        XCTAssertEqual(AudioLevel.leadingSilence(buf, threshold: 0.02, leadIn: 0), 100)
+        XCTAssertEqual(AudioLevel.leadingSilence(buf, threshold: 0.02, leadIn: 30), 70)
+        XCTAssertEqual(AudioLevel.leadingSilence([loud, loud, loud], threshold: 0.02, leadIn: 10), 0)
+        XCTAssertEqual(AudioLevel.leadingSilence([quiet, quiet, quiet], threshold: 0.02, leadIn: 0), 3)
+        XCTAssertEqual(AudioLevel.leadingSilence([], threshold: 0.02), 0)
+    }
+
+    func testLeadingSilenceDefaultLeadInKeepsContext() {
+        var buf = [Float](repeating: 0.001, count: 20000)
+        buf.append(0.5)
+        XCTAssertEqual(AudioLevel.leadingSilence(buf, threshold: 0.02), 18400)
+    }
+
+    func testMergeBleedSameTimestampKeepsSystem() {
+        let mic = [TranscriptSegment(meetingId: "m", text: "с нефтебазой выезжает бензовоз и привозит топливо",
+                                     startSeconds: 10, endSeconds: 14, source: .mic)]
+        let sys = [TranscriptSegment(meetingId: "m", text: "с нефтебазой выезжает бензовоз и привозит топливо",
+                                     startSeconds: 10, endSeconds: 14, source: .system)]
+        let merged = TranscriptMerge.merge(mic: mic, system: sys)
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.source, .system)
+    }
+
+    func testMergeMicOnlySpeechSurvivesLoudSystem() {
+        let mic = [TranscriptSegment(meetingId: "m", text: "так проверка микрофона говорю я в тишине",
+                                     startSeconds: 2, endSeconds: 6, source: .mic)]
+        let sys = [TranscriptSegment(meetingId: "m", text: "вот тогда бы мы почувствовали магию габена",
+                                     startSeconds: 3, endSeconds: 7, source: .system),
+                   TranscriptSegment(meetingId: "m", text: "ведеокарту амд обсуждаем сегодня подробно",
+                                     startSeconds: 8, endSeconds: 11, source: .system)]
+        let merged = TranscriptMerge.merge(mic: mic, system: sys)
+        XCTAssertEqual(merged.count, 3)
+        XCTAssertEqual(merged.filter { $0.source == .mic }.count, 1)
     }
 
     func testNavLargeDeltaClamps() {

@@ -34,11 +34,16 @@ public final class RecordingEngine: ObservableObject {
     private nonisolated(unsafe) var systemAccumulator: [Float] = []
     private nonisolated(unsafe) let liveLock = NSLock()
     private nonisolated(unsafe) var converterFormatKey: String = ""
-    /// Monotonic recording-start reference. BOTH accumulators position their samples
-    /// against it so mic (continuous) and system (gaps during mac silence) share ONE
-    /// timeline → segment timecodes are true recording time and the two channels stay
-    /// matched (no reordering / "mic disappears when system audio starts").
-    private nonisolated(unsafe) var startUptime: Double = 0
+    /// Shared zero-anchor on the CoreAudio host clock (mach units), set by the FIRST
+    /// buffer of either channel (under `liveLock`). Both accumulators position samples by
+    /// (bufferHostTime − anchorHost) → mic (continuous) and system (bursty, gaps during
+    /// mac silence) share ONE timeline on the audio-capture clock, immune to delivery
+    /// latency (arrival wall-clock drifted the system channel by tens of seconds). 0 = not
+    /// yet anchored.
+    private nonisolated(unsafe) var anchorHost: UInt64 = 0
+    /// One-shot logging of each channel's first-real-sample offset (timeline debugging).
+    private nonisolated(unsafe) var loggedMicStart = false
+    private nonisolated(unsafe) var loggedSysStart = false
 
     private nonisolated(unsafe) let micFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
     private nonisolated(unsafe) var fileConverter: AVAudioConverter?
@@ -93,16 +98,18 @@ public final class RecordingEngine: ObservableObject {
         liveAccumulator = []; systemAccumulator = []
         liveAccumulator.reserveCapacity(16000 * 60 * 30)
         systemAccumulator.reserveCapacity(16000 * 60 * 30)
+        anchorHost = 0
         liveLock.unlock()
         converterFormatKey = ""
-        startUptime = ProcessInfo.processInfo.systemUptime
+        loggedMicStart = false
+        loggedSysStart = false
 
         pinnedInputID = AudioDevices.hardwareInputID(preferUID: SettingsStore.preferredMicUID())
-        micCapture.onBuffer = { [weak self] buffer in
+        micCapture.onBuffer = { [weak self] buffer, host in
             guard let self else { return }
             ensureConverters(for: buffer.format)
             writeMic(buffer)
-            accumulateLive(buffer)
+            accumulateLive(buffer, host: host)
             let micLevel = RecordingEngine.rms(buffer)
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -125,7 +132,7 @@ public final class RecordingEngine: ObservableObject {
         systemTap.onLevel = { [weak self] level in
             Task { @MainActor [weak self] in self?.lastSystemLevel = level }
         }
-        systemTap.onLiveSamples = { [weak self] samples in self?.appendSystemLive(samples) }
+        systemTap.onLiveSamples = { [weak self] samples, host in self?.appendSystemLive(samples, host: host) }
         do {
             try systemTap.start(url: sys)
             systemURL = sys
@@ -211,9 +218,8 @@ public final class RecordingEngine: ObservableObject {
         levels = Array(repeating: 0, count: 15)
         converter = nil
         converterFormatKey = ""
-        startUptime = 0
         micFileLock.lock(); fileConverter = nil; micFile = nil; micFileLock.unlock()
-        liveLock.lock(); liveAccumulator = []; systemAccumulator = []; liveLock.unlock()
+        liveLock.lock(); liveAccumulator = []; systemAccumulator = []; anchorHost = 0; liveLock.unlock()
     }
 
     private func startTicker() {
@@ -256,8 +262,9 @@ public final class RecordingEngine: ObservableObject {
         if err == nil { try? file.write(from: out) }
     }
 
-    /// Resample a mic buffer to 16 kHz mono and append to the live accumulator.
-    private nonisolated func accumulateLive(_ buffer: AVAudioPCMBuffer) {
+    /// Resample a mic buffer to 16 kHz mono and append to the live accumulator, positioned
+    /// by the buffer's capture host time on the shared clock.
+    private nonisolated func accumulateLive(_ buffer: AVAudioPCMBuffer, host: UInt64) {
         guard let converter else { return }
         let ratio = liveFormat.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 16)
@@ -273,17 +280,25 @@ public final class RecordingEngine: ObservableObject {
         guard err == nil, let ch = out.floatChannelData?[0] else { return }
         let n = Int(out.frameLength)
         guard n > 0 else { return }
-        let offset = currentOffset()
         liveLock.lock()
+        let offset = offsetSamples(forHost: host)
         padSilence(&liveAccumulator, toOffset: offset)
         liveAccumulator.append(contentsOf: UnsafeBufferPointer(start: ch, count: n))
         liveLock.unlock()
+        if !loggedMicStart {
+            loggedMicStart = true
+            Self.log.info("mic first samples @ \(Double(offset) / 16000, format: .fixed(precision: 2), privacy: .public)s")
+        }
     }
 
-    /// Samples elapsed since recording start (the shared timeline). Realtime-safe
-    /// (mach clock, no locks).
-    private nonisolated func currentOffset() -> Int {
-        Int(max(0, ProcessInfo.processInfo.systemUptime - startUptime) * 16000)
+    /// Sample offset of a buffer on the SHARED CoreAudio host clock. The first buffer of
+    /// either channel sets the zero anchor; later buffers map their capture host time to a
+    /// sample index so mic + system stay matched regardless of delivery latency. MUST be
+    /// called under `liveLock`.
+    private nonisolated func offsetSamples(forHost host: UInt64) -> Int {
+        if anchorHost == 0 { anchorHost = host; return 0 }
+        let sec = AVAudioTime.seconds(forHostTime: host) - AVAudioTime.seconds(forHostTime: anchorHost)
+        return Int(max(0, sec * 16000))
     }
 
     /// Zero-fills an accumulator up to `offset` so its index maps to real recording
@@ -308,12 +323,16 @@ public final class RecordingEngine: ObservableObject {
     }
 
     /// Appends 16 kHz system-audio samples (realtime thread, from SystemAudioTap).
-    private nonisolated func appendSystemLive(_ s: [Float]) {
-        let offset = currentOffset()
+    private nonisolated func appendSystemLive(_ s: [Float], host: UInt64) {
         liveLock.lock()
+        let offset = offsetSamples(forHost: host)
         padSilence(&systemAccumulator, toOffset: offset)
         systemAccumulator.append(contentsOf: s)
         liveLock.unlock()
+        if !loggedSysStart {
+            loggedSysStart = true
+            Self.log.info("system first samples @ \(Double(offset) / 16000, format: .fixed(precision: 2), privacy: .public)s")
+        }
     }
 
     public func liveMicCount() -> Int {

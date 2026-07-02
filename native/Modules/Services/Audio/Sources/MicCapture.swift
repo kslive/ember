@@ -24,8 +24,10 @@ final class MicCapture {
     private var unit: AudioUnit?
     /// Format of the buffers delivered to `onBuffer` (float32, non-interleaved).
     private(set) nonisolated(unsafe) var format: AVAudioFormat?
-    /// Called on the realtime audio thread with each captured buffer.
-    nonisolated(unsafe) var onBuffer: ((AVAudioPCMBuffer) -> Void)?
+    /// Called on the realtime audio thread with each captured buffer + its capture
+    /// host time (mach units) so callers can position samples on the shared CoreAudio
+    /// clock instead of arrival wall-clock (which drifts under buffering latency).
+    nonisolated(unsafe) var onBuffer: ((AVAudioPCMBuffer, UInt64) -> Void)?
     /// Called on the MAIN thread if the bound input device dies/unplugs mid-session
     /// (AUHAL does NOT auto-migrate a device-bound unit) → caller should rebuild.
     nonisolated(unsafe) var onDeviceLost: (() -> Void)?
@@ -144,7 +146,9 @@ final class MicCapture {
         let status = AudioUnitRender(au, flags, ts, 1, frames, buf.mutableAudioBufferList)
         if status == noErr {
             if !didLogFirstBuffer { didLogFirstBuffer = true; Self.log.info("first mic buffer frames=\(frames, privacy: .public)") }
-            onBuffer?(buf)
+            let stamp = ts.pointee
+            let host = (stamp.mFlags.contains(.hostTimeValid) && stamp.mHostTime != 0) ? stamp.mHostTime : mach_absolute_time()
+            onBuffer?(buf, host)
         }
     }
 

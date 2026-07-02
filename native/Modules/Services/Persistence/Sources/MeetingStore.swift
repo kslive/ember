@@ -70,6 +70,11 @@ public final class MeetingStore: ObservableObject {
                 t.add(column: "source", .text).notNull().defaults(to: "unknown")
             }
         }
+        migrator.registerMigration("v3-segment-speaker") { db in
+            try db.alter(table: "segment") { t in
+                t.add(column: "speaker", .integer).notNull().defaults(to: 0)
+            }
+        }
         try migrator.migrate(dbQueue)
     }
 
@@ -177,16 +182,18 @@ private struct SegmentRow: Codable, FetchableRecord, PersistableRecord {
     var endSeconds: Double
     var idx: Int
     var source: String
+    var speaker: Int
 
     init(_ s: TranscriptSegment, idx: Int) {
         id = s.id; meetingId = s.meetingId; text = s.text
         startSeconds = s.startSeconds; endSeconds = s.endSeconds; self.idx = idx
         source = s.source.rawValue
+        speaker = s.speaker
     }
 
     var model: TranscriptSegment {
         TranscriptSegment(id: id, meetingId: meetingId, text: text, startSeconds: startSeconds, endSeconds: endSeconds,
-                          source: TranscriptSource(rawValue: source) ?? .unknown)
+                          source: TranscriptSource(rawValue: source) ?? .unknown, speaker: speaker)
     }
 }
 

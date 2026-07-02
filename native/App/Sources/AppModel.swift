@@ -2,6 +2,8 @@ import AudioService
 import CallDetectService
 import Combine
 import Core
+import DiarizationService
+import OSLog
 import PersistenceService
 import SummaryService
 import SwiftUI
@@ -23,7 +25,9 @@ final class AppModel: ObservableObject {
     let transcription = TranscriptionService()
     let summary = SummaryService()
     let callDetect = CallDetectService()
+    private let diarization = DiarizationService()
     private var autoStarted = false
+    private static let log = Logger(subsystem: "com.kslff.ember", category: "pipeline")
 
     @Published var route: AppRoute = .home
     @Published var selectedMeetingId: String?
@@ -100,8 +104,7 @@ final class AppModel: ObservableObject {
 
     private func autoStartFromCall() {
         guard !isRecordingActive else { return }
-        autoStarted = true
-        startRecording()
+        startRecording(auto: true)
     }
 
     private func autoStopFromCall() {
@@ -113,13 +116,17 @@ final class AppModel: ObservableObject {
         engine.status == .recording || engine.status == .paused || engine.status == .starting
     }
 
-    func startRecording() {
+    /// `auto` marks a call-detect-initiated session. The flag is committed ONLY after
+    /// the engine actually starts — setting it before (and leaving it on a failed
+    /// start) made a later call-end kill an unrelated MANUAL recording.
+    func startRecording(auto: Bool = false) {
         guard !isStarting, !isRecordingActive else { return }
         route = .home
         isStarting = true
         Task {
             defer { isStarting = false }
             guard await RecordingEngine.requestMicPermission() else {
+                autoStarted = false
                 showToast(tr("toast.micDenied"), tone: .error)
                 return
             }
@@ -129,9 +136,11 @@ final class AppModel: ObservableObject {
                 try engine.start(meetingId: id)
             } catch {
                 recordingId = nil
+                autoStarted = false
                 showToast(tr("toast.recFailed"), tone: .error)
                 return
             }
+            autoStarted = auto
             startLiveLoop(id)
             notify("Recording started", "Запись началась", "开始录音")
             if SettingsStore.notifyOnStartOn() { showToast(tr("toast.recReminder"), tone: .warn) } else { showToast(tr("toast.recStarted"), tone: .info) }
@@ -145,7 +154,19 @@ final class AppModel: ObservableObject {
     /// tail since the last *confirmed* segment so Whisper always has context
     /// (a 2s isolated clip gets padded to 30s of silence → predicts nothing).
     /// Older segments are confirmed (locked); the last is a live hypothesis.
-    private struct LiveState { var confirmed: [TranscriptSegment] = []; var confirmedSamples = 0; var live: [TranscriptSegment] = [] }
+    private struct LiveState {
+        var confirmed: [TranscriptSegment] = []
+        var confirmedSamples = 0
+        var live: [TranscriptSegment] = []
+        /// Accumulator size at the last decode — used to detect whether anything NEW
+        /// arrived since, so unchanged tails aren't re-decoded every tick.
+        var lastTotal = 0
+        /// True once the tail was decoded after speech stopped (one "settling" pass).
+        /// While settled and the incoming delta stays silent, decoding is skipped —
+        /// re-decoding an unchanged 30s window every 1.8s kept the ANE at ~100% duty
+        /// through every pause (the main heat source on long recordings).
+        var settled = false
+    }
 
     /// Skip transcription only when a window/recording is TRULY silent. Gate on PEAK
     /// (max |sample|), NOT mean RMS: real speech mixed with pauses has a low average
@@ -161,9 +182,11 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             await transcription.ensureLoaded(model: SettingsStore.currentWhisperModelId())
             var mic = LiveState(), sys = LiveState()
+            var sleepNs: UInt64 = 1_800_000_000
             while !Task.isCancelled, isRecordingActive {
-                try? await Task.sleep(nanoseconds: 1_800_000_000)
+                try? await Task.sleep(nanoseconds: sleepNs)
                 guard !Task.isCancelled, engine.status == .recording, transcription.isReady else { continue }
+                let t0 = ContinuousClock.now
                 mic = await advanceLive(mic, meetingId: meetingId, source: .mic,
                                         total: engine.liveMicCount(),
                                         tailFrom: { self.engine.liveMicSlice(from: $0) })
@@ -171,7 +194,12 @@ final class AppModel: ObservableObject {
                                         total: engine.liveSystemCount(),
                                         tailFrom: { self.engine.liveSystemSlice(from: $0) })
                 if Task.isCancelled { break }
-                liveSegments = TranscriptMerge.interleave(mic: mic.live, system: sys.live)
+                liveSegments = TranscriptMerge.merge(mic: mic.live, system: sys.live)
+                // Adaptive pacing: never stack decode cycles — if a cycle took longer
+                // than the base interval, rest at least that long (capped at 4s).
+                let d = (ContinuousClock.now - t0).components
+                let cycleSeconds = Double(d.seconds) + Double(d.attoseconds) / 1e18
+                sleepNs = UInt64(min(4.0, max(1.8, cycleSeconds)) * 1_000_000_000)
             }
         }
     }
@@ -183,10 +211,27 @@ final class AppModel: ObservableObject {
                              total: Int, tailFrom: (Int) -> [Float]) async -> LiveState {
         var s = state
         guard total - s.confirmedSamples > 16000 else { return s }
-        let tail = tailFrom(s.confirmedSamples)
-        guard AudioLevel.peak(tail) > Self.silencePeak else { return s }
-        let base = Double(s.confirmedSamples) / 16000.0
+        // Duty-cycle gate: decode only when the NEW samples since the last decode carry
+        // speech, or one final "settling" pass right after speech stops. A settled tail
+        // with a silent delta is skipped entirely (no ANE work during pauses).
+        let deltaLoud = total > s.lastTotal
+            && AudioLevel.peak(tailFrom(max(s.confirmedSamples, s.lastTotal))) > Self.silencePeak
+        if !deltaLoud, s.settled {
+            s.lastTotal = total
+            return s
+        }
+        let rawTail = tailFrom(s.confirmedSamples)
+        guard AudioLevel.peak(rawTail) > Self.silencePeak else {
+            s.lastTotal = total
+            s.settled = true
+            return s
+        }
+        let lead = AudioLevel.leadingSilence(rawTail, threshold: Self.silencePeak)
+        let tail = lead > 0 ? Array(rawTail[lead...]) : rawTail
+        let base = Double(s.confirmedSamples + lead) / 16000.0
         let segs = await transcription.transcribeSamples(tail, meetingId: meetingId, language: whisperLang())
+        s.lastTotal = total
+        s.settled = !deltaLoud
         guard !segs.isEmpty else { return s }
         let adjusted = segs.map {
             TranscriptSegment(meetingId: meetingId, text: $0.text,
@@ -212,6 +257,7 @@ final class AppModel: ObservableObject {
         let live = liveTask
         liveTask?.cancel()
         liveTask = nil
+        let liveFinal = liveSegments
         liveSegments = []
         let (mic, system) = engine.stop()
         let micSamples = engine.liveSamples()
@@ -227,28 +273,57 @@ final class AppModel: ObservableObject {
         processingIds.insert(id)
         notify("Recording stopped — processing…", "Запись остановлена — обработка…", "录音已停止——处理中…")
         showToast(tr("toast.recStopped"), tone: .info)
-        Task { await live?.value; await process(meetingId: id, micSamples: micSamples, systemSamples: systemSamples, mic: mic, system: system) }
+        Task {
+            await live?.value
+            await process(meetingId: id, liveFinal: liveFinal, micSamples: micSamples,
+                          systemSamples: systemSamples, mic: mic, system: system)
+        }
     }
 
-    private func process(meetingId id: String, micSamples: [Float], systemSamples: [Float], mic: URL?, system: URL?) async {
+    private func process(meetingId id: String, liveFinal: [TranscriptSegment], micSamples: [Float],
+                         systemSamples: [Float], mic: URL?, system: URL?) async {
         defer { processingIds.remove(id); revision += 1 }
-        await transcription.ensureLoaded(model: SettingsStore.currentWhisperModelId())
         let lang = whisperLang()
-        let micGated = !micSamples.isEmpty && AudioLevel.peak(micSamples) >= Self.silencePeak
         let sysGated = !systemSamples.isEmpty && AudioLevel.peak(systemSamples) >= Self.silencePeak
-        async let micRaw: [TranscriptSegment] = micGated
-            ? transcription.transcribeSamples(micSamples, meetingId: id, language: lang, strict: true) : []
-        async let sysRaw: [TranscriptSegment] = sysGated
-            ? transcription.transcribeSamples(systemSamples, meetingId: id, language: lang, strict: true) : []
-        let micSegs = await (micRaw).map { tag($0, .mic) }
-        let sysSegs = await (sysRaw).map { tag($0, .system) }
-        var segs = TranscriptMerge.merge(mic: micSegs, system: sysSegs)
+
+        // 1. Instant: persist the full live transcript right away (no blank wait).
+        var segs = liveFinal.filter { TranscriptionService.hasSpeech($0.text) }
+        if !segs.isEmpty {
+            store.saveTranscript(meetingId: id, segments: segs)
+            revision += 1
+        }
+
+        // 2. Full re-pass WITHOUT VAD (strict: false) — VAD-chunking dropped quiet speech
+        // and truncated the final; the plain pass (leading-silence trimmed per channel)
+        // transcribes the whole buffer with correct timecodes.
+        await transcription.ensureLoaded(model: SettingsStore.currentWhisperModelId())
+        async let micRaw = transcribeChannel(micSamples, meetingId: id, source: .mic)
+        async let sysRaw = transcribeChannel(systemSamples, meetingId: id, source: .system)
+        let micSegs = await micRaw
+        let sysSegs = await sysRaw
+        Self.logChannels(micSamples: micSamples, systemSamples: systemSamples, micSegs: micSegs, sysSegs: sysSegs)
+        let rePass = TranscriptMerge.merge(mic: micSegs, system: sysSegs)
+
+        // 3. Keep the richer of {live, re-pass} → the final is never shorter than live.
+        let liveLen = segs.reduce(0) { $0 + $1.text.count }
+        let rePassLen = rePass.reduce(0) { $0 + $1.text.count }
+        let useRepass = !rePass.isEmpty && rePassLen >= liveLen
+        if useRepass { segs = rePass }
+        Self.log.info("final source=\(useRepass ? "repass" : "live", privacy: .public) live=\(liveLen, privacy: .public) repass=\(rePassLen, privacy: .public)")
+
+        // 4. File-mix fallback only if both live and re-pass produced nothing.
         if segs.isEmpty {
             let mixedURL = RecordingEngine.recordingsDir().appendingPathComponent("\(id).m4a")
             if let audioURL = await AudioMixer.mix(mic: mic, system: system, output: mixedURL) ?? mic ?? system {
                 segs = await transcription.transcribe(url: audioURL, meetingId: id, language: lang, strict: false)
                 try? FileManager.default.removeItem(at: audioURL)
             }
+        }
+        // Offline speaker diarization of the SYSTEM channel → number distinct voices
+        // ("Собеседник 1/2/3"). Best-effort: on any failure segments keep speaker 0.
+        if SettingsStore.diarizationOn(), sysGated {
+            let turns = await diarization.diarize(systemSamples)
+            if !turns.isEmpty { segs = DiarizationMap.assign(segs, turns: turns) }
         }
         store.saveTranscript(meetingId: id, segments: segs)
         revision += 1
@@ -305,22 +380,50 @@ final class AppModel: ObservableObject {
         return tr("toast.summaryFailed")
     }
 
-    /// Tags a transcribed segment with its capture source.
-    private func tag(_ seg: TranscriptSegment, _ source: TranscriptSource) -> TranscriptSegment {
-        var s = seg; s.source = source; return s
+    /// Transcribes ONE channel's full buffer with the leading silence trimmed off —
+    /// Whisper snaps speech to t=0 on a long silent lead-in, so feed it only from the
+    /// first real sample and add the trimmed offset back to each segment. Tags the
+    /// source; empty when the channel is silent.
+    private func transcribeChannel(_ samples: [Float], meetingId id: String, source: TranscriptSource) async -> [TranscriptSegment] {
+        guard AudioLevel.peak(samples) > Self.silencePeak else { return [] }
+        let lead = AudioLevel.leadingSilence(samples, threshold: Self.silencePeak)
+        let trimmed = lead > 0 ? Array(samples[lead...]) : samples
+        let base = Double(lead) / 16000.0
+        let segs = await transcription.transcribeSamples(trimmed, meetingId: id, language: whisperLang(), strict: false)
+        return segs.map { seg in
+            var s = seg
+            s.startSeconds += base
+            s.endSeconds += base
+            s.source = source
+            return s
+        }
+    }
+
+    /// Logs per-channel duration + transcribed segment time-ranges (timeline debugging:
+    /// reveals if the system channel lands at ~0 when it should be offset, or if the mic
+    /// channel is empty/lost).
+    private static func logChannels(micSamples: [Float], systemSamples: [Float],
+                                    micSegs: [TranscriptSegment], sysSegs: [TranscriptSegment]) {
+        func rng(_ segs: [TranscriptSegment]) -> String {
+            guard let lo = segs.map(\.startSeconds).min(), let hi = segs.map(\.endSeconds).max() else { return "—" }
+            return String(format: "%.1f–%.1fs", lo, hi)
+        }
+        let mic = String(format: "%.1f", Double(micSamples.count) / 16000)
+        let sys = String(format: "%.1f", Double(systemSamples.count) / 16000)
+        let msg = "channels mic=\(mic)s (\(micSegs.count) segs \(rng(micSegs))) system=\(sys)s (\(sysSegs.count) segs \(rng(sysSegs)))"
+        log.info("\(msg, privacy: .public)")
     }
 
     /// Builds speaker-attributed transcript text for the summary AI: each line is
-    /// prefixed with who said it ("Me"/"Speaker") so the model can tell participants
-    /// apart. Unknown-source lines (legacy) are passed through unprefixed.
+    /// prefixed with who said it ("Я"/"Собеседник N") — including the diarized speaker
+    /// number — so the model can tell participants apart. Unknown lines pass through.
     private func speakerTranscript(_ segs: [TranscriptSegment]) -> String {
         let me = tr("speaker.me"), them = tr("speaker.them")
         return segs.map { seg in
-            switch seg.source {
-            case .mic: "\(me): \(seg.text)"
-            case .system: "\(them): \(seg.text)"
-            case .unknown: seg.text
+            if let label = SpeakerLabel.text(source: seg.source, speaker: seg.speaker, me: me, them: them) {
+                return "\(label): \(seg.text)"
             }
+            return seg.text
         }.joined(separator: "\n")
     }
 

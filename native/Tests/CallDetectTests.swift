@@ -84,4 +84,25 @@ final class CallDetectTests: XCTestCase {
         XCTAssertTrue(r.state.autoSession)
         XCTAssertFalse(r.events.contains(.end))
     }
+
+    /// Back-to-back calls: after a session ends, a new sustained-active run must
+    /// start a NEW session (the state machine fully re-arms).
+    func testEndThenNewCallStartsAgain() {
+        let seq = [false] + Array(repeating: true, count: 5)
+            + Array(repeating: false, count: 8)
+            + Array(repeating: true, count: 5)
+        let r = run(seq)
+        XCTAssertEqual(r.events.filter { $0 == .start }.count, 2)
+        XCTAssertEqual(r.events.filter { $0 == .end }.count, 1)
+        XCTAssertTrue(r.state.autoSession)
+    }
+
+    /// Flapping input (never `startDebounce` consecutive active ticks) must never
+    /// start a session — the debounce requires a SUSTAINED run.
+    func testFlappingNeverStarts() {
+        let seq = (0 ..< 20).map { $0 % 2 == 0 }
+        let r = run(seq)
+        XCTAssertFalse(r.events.contains(.start))
+        XCTAssertFalse(r.state.autoSession)
+    }
 }

@@ -47,4 +47,17 @@ public enum AudioLevel {
     public static func meter(_ rms: Float) -> CGFloat {
         CGFloat(min(1, Double(rms).squareRoot() * 3))
     }
+
+    /// Count of leading samples to drop as silence (up to the first sample exceeding
+    /// `threshold`, minus `leadIn` samples of context). Whisper "snaps" speech to t=0
+    /// when fed a clip with a long silent lead-in, misplacing timecodes — trim it and
+    /// add the trimmed offset back as the segment base. Returns 0 when speech starts
+    /// immediately; `samples.count` when the whole buffer is silent.
+    public static func leadingSilence(_ samples: [Float], threshold: Float, leadIn: Int = 1600) -> Int {
+        var i = 0
+        while i < samples.count, abs(samples[i]) <= threshold {
+            i += 1
+        }
+        return max(0, i - leadIn)
+    }
 }

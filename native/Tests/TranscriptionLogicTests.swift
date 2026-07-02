@@ -53,4 +53,15 @@ final class TranscriptionLogicTests: XCTestCase {
         XCTAssertTrue(options.skipSpecialTokens)
         XCTAssertNil(options.language)
     }
+
+    func testHasSpeechFiltersPunctuationOnly() {
+        XCTAssertFalse(TranscriptionService.hasSpeech("-"))
+        XCTAssertFalse(TranscriptionService.hasSpeech("—"))
+        XCTAssertFalse(TranscriptionService.hasSpeech("..."))
+        XCTAssertFalse(TranscriptionService.hasSpeech("   "))
+        XCTAssertFalse(TranscriptionService.hasSpeech(""))
+        XCTAssertTrue(TranscriptionService.hasSpeech("привет"))
+        XCTAssertTrue(TranscriptionService.hasSpeech("АЗС 2025"))
+        XCTAssertTrue(TranscriptionService.hasSpeech("- Выложи"))
+    }
 }

@@ -37,9 +37,10 @@ final class SystemAudioTap {
     private let live16k = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
 
     var onLevel: ((CGFloat) -> Void)?
-    /// Emits 16 kHz mono system-audio samples (realtime thread) for live+final
-    /// transcription — so the other call participant is transcribed, not just the mic.
-    nonisolated(unsafe) var onLiveSamples: (([Float]) -> Void)?
+    /// Emits 16 kHz mono system-audio samples + the buffer's capture host time (mach
+    /// units) on the realtime thread, so the engine positions them on the shared
+    /// CoreAudio clock (arrival wall-clock drifts under the tap's bursty delivery).
+    nonisolated(unsafe) var onLiveSamples: (([Float], UInt64) -> Void)?
     private(set) var url: URL?
     private var isBuilding = false
     var isRunning: Bool {
@@ -149,9 +150,11 @@ final class SystemAudioTap {
         try check(AudioHardwareCreateAggregateDevice(aggDict as CFDictionary, &agg), "create aggregate")
         aggregateID = agg
 
-        let block: AudioDeviceIOBlock = { [weak self] _, inInputData, _, _, _ in
+        let block: AudioDeviceIOBlock = { [weak self] _, inInputData, inInputTime, _, _ in
             guard let self, let tf = tapFormat, let conv = converter,
                   let inBuf = AVAudioPCMBuffer(pcmFormat: tf, bufferListNoCopy: inInputData) else { return }
+            let stamp = inInputTime.pointee
+            let host = (stamp.mFlags.contains(.hostTimeValid) && stamp.mHostTime != 0) ? stamp.mHostTime : mach_absolute_time()
             let ratio = canonical.sampleRate / tf.sampleRate
             let cap = AVAudioFrameCount(Double(inBuf.frameLength) * ratio + 32)
             guard cap > 0, let out = AVAudioPCMBuffer(pcmFormat: canonical, frameCapacity: cap) else { return }
@@ -179,7 +182,7 @@ final class SystemAudioTap {
                     }
                     if e2 == nil, let ch2 = out16.floatChannelData?[0] {
                         let nn = Int(out16.frameLength)
-                        if nn > 0 { emit(Array(UnsafeBufferPointer(start: ch2, count: nn))) }
+                        if nn > 0 { emit(Array(UnsafeBufferPointer(start: ch2, count: nn)), host) }
                     }
                 }
             }

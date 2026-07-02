@@ -41,9 +41,13 @@ public final class CallDetectService: ObservableObject {
 
     public func start() {
         guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tick() }
         }
+        // .common: a .default-mode timer pauses while a menu is open or a scroll is
+        // tracking — the tick-based debounce counters would silently freeze with it.
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
     public func stop() {
@@ -128,6 +132,9 @@ public final class CallDetectService: ObservableObject {
             guard AudioObjectGetPropertyData(proc, &pidAddr, 0, nil, &pSize, &pid) == noErr else { continue }
 
             if pid == selfPid { continue }
+            // A bogus HAL entry with pid ≤ 0 must not count as a call: kill(0, 0)
+            // signals our own process GROUP and returns 0, which would read as "alive".
+            if pid <= 0 { continue }
             // Skip only genuinely DEAD/stale pids (a leftover CoreAudio object). A LIVE
             // process using input is a real call EVEN IF it has no NSRunningApplication —
             // browser audio helpers (Google Meet, Zoom-web) and other non-GUI audio

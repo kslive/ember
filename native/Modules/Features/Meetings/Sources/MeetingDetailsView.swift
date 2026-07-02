@@ -146,9 +146,17 @@ public struct MeetingDetailsView: View {
                         ForEach(segments) { seg in
                             HStack(alignment: .top, spacing: 16) {
                                 Text(seg.timecode).font(EmberType.mono(12)).foregroundStyle(EmberColor.text3).padding(.top, 2)
-                                if let lbl = seg.source.tag {
-                                    Text(lbl).font(EmberType.mono(11)).foregroundStyle(EmberColor.accentText).padding(.top, 2)
+                                Group {
+                                    if let lbl = SpeakerLabel.tag(source: seg.source, speaker: seg.speaker,
+                                                                  meShort: locale.t("speaker.me.short"),
+                                                                  themShort: locale.t("speaker.them.short")) {
+                                        Text(lbl).font(EmberType.mono(11)).foregroundStyle(EmberColor.accentText)
+                                    } else {
+                                        Color.clear
+                                    }
                                 }
+                                .frame(width: 34, alignment: .leading)
+                                .padding(.top, 2)
                                 Text(seg.text).font(EmberType.regular(14.5)).lineSpacing(8).foregroundStyle(EmberColor.text)
                                 Spacer(minLength: 0)
                             }

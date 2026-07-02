@@ -124,7 +124,7 @@ struct AppShell: View {
             if model.isRecordingActive {
                 RecordingView(engine: model.engine, segments: model.liveSegments, onStop: { model.stopRecording(language: locale.language) })
             } else {
-                HomeIdleView(isEmpty: model.store.meetings.isEmpty, onStart: model.startRecording)
+                HomeIdleView(isEmpty: model.store.meetings.isEmpty, onStart: { model.startRecording() })
             }
         case .meetings:
             if let id = model.selectedMeetingId, let meeting = model.meeting(id) {
