@@ -22,6 +22,7 @@ public final class TranscriptionService: ObservableObject {
     private var kit: WhisperKit?
     private var loadedModel: String?
     private var tasks: [String: Task<Void, Never>] = [:]
+    private var idleUnloadTask: Task<Void, Never>?
 
     public init() {
         refreshStates()
@@ -112,8 +113,20 @@ public final class TranscriptionService: ObservableObject {
         if loadedModel == variant { kit = nil; loadedModel = nil; status = .idle }
     }
 
+    /// Auto-unload after `seconds` of idle; any new load/transcription cancels it.
+    /// Without this the CoreML model (1.5–2+ GB) lived in RAM forever between meetings.
+    public func scheduleIdleUnload(seconds: UInt64 = 300) {
+        idleUnloadTask?.cancel()
+        idleUnloadTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.unload()
+        }
+    }
+
     /// Loads (downloading on first use) the given WhisperKit model.
     public func ensureLoaded(model: String) async {
+        idleUnloadTask?.cancel()
         if loadedModel == model, kit != nil { return }
         status = .loading
         do {
@@ -135,6 +148,8 @@ public final class TranscriptionService: ObservableObject {
     /// reloads it. No-op while actively transcribing.
     public func unload() {
         if case .transcribing = status { return }
+        idleUnloadTask?.cancel()
+        idleUnloadTask = nil
         kit = nil
         loadedModel = nil
         status = .idle
@@ -147,6 +162,7 @@ public final class TranscriptionService: ObservableObject {
     /// short 1.8s growing-window clips; live relies on the caller's RMS gate to skip
     /// silence instead. The FINAL pass (long audio) uses `strict: true`.
     public func transcribeSamples(_ samples: [Float], meetingId: String, language: String?, strict: Bool = false) async -> [TranscriptSegment] {
+        idleUnloadTask?.cancel()
         guard let kit, !samples.isEmpty else { return [] }
         do {
             let results = try await kit.transcribe(audioArray: samples, decodeOptions: Self.decodeOptions(language: language, strict: strict))
@@ -248,6 +264,7 @@ public final class TranscriptionService: ObservableObject {
     /// already rejected everything, re-running the mix with the same strict thresholds
     /// would reject it too.
     public func transcribe(url: URL, meetingId: String, language: String?, strict: Bool = false) async -> [TranscriptSegment] {
+        idleUnloadTask?.cancel()
         guard let kit else { return [] }
         status = .transcribing
         do {

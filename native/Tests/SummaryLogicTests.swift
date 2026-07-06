@@ -166,6 +166,16 @@ final class SummaryLogicTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: SettingsStore.autoSummaryKey)
     }
 
+    /// The single-pass prompt budget is capped at 12k tokens for EVERY model — an
+    /// uncapped ~33.6k-token pass built a multi-GB KV cache and pinned the GPU for
+    /// minutes on long meetings (whole-Mac lag); long transcripts must map-reduce.
+    func testPromptBudgetTokensCappedAt12k() {
+        XCTAssertEqual(SummaryService.promptBudgetTokens(context: 40960, maxGen: 6144), 12000)
+        XCTAssertEqual(SummaryService.promptBudgetTokens(context: 20000, maxGen: 6144), 12000)
+        XCTAssertEqual(SummaryService.promptBudgetTokens(context: 16000, maxGen: 6144), 8656)
+        XCTAssertEqual(SummaryService.promptBudgetTokens(context: 8192, maxGen: 6144), 2000)
+    }
+
     func testThinkStripperRemovesReasoning() {
         XCTAssertEqual(ThinkStripper.strip("<think>reasoning…</think>\nИтог"), "Итог")
     }

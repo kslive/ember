@@ -183,6 +183,9 @@ public enum LocalizedStrings {
         "dialog.rename.title": "Rename meeting",
         "dialog.delete.title": "Delete meeting?",
         "dialog.delete.msg": "The transcript, summary and audio will be deleted. This cannot be undone.",
+        "settings.model.delete": "Delete from disk",
+        "dialog.deleteModel.title": "Delete model?",
+        "dialog.deleteModel.msg": "{name} ({size}) will be removed from disk. You can download it again anytime.",
         "ctx.rename": "Rename",
         "ctx.delete": "Delete"
     ]
@@ -356,6 +359,9 @@ public enum LocalizedStrings {
         "dialog.rename.title": "Переименовать встречу",
         "dialog.delete.title": "Удалить встречу?",
         "dialog.delete.msg": "Будут удалены транскрипт, саммари и аудио. Действие необратимо.",
+        "settings.model.delete": "Удалить с диска",
+        "dialog.deleteModel.title": "Удалить модель?",
+        "dialog.deleteModel.msg": "«{name}» ({size}) будет удалена с диска. Её можно скачать заново в любой момент.",
         "ctx.rename": "Переименовать",
         "ctx.delete": "Удалить"
     ]
@@ -528,6 +534,9 @@ public enum LocalizedStrings {
         "speaker.them.short": "对",
         "dialog.rename.title": "重命名会议",
         "dialog.delete.title": "删除会议？",
+        "settings.model.delete": "从磁盘删除",
+        "dialog.deleteModel.title": "删除模型？",
+        "dialog.deleteModel.msg": "「{name}」（{size}）将从磁盘中删除。可随时重新下载。",
         "dialog.delete.msg": "转写、摘要和音频都将被删除。此操作无法撤销。",
         "ctx.rename": "重命名",
         "ctx.delete": "删除"

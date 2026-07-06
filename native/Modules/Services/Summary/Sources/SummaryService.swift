@@ -1,6 +1,7 @@
 import Combine
 import Core
 import Foundation
+import MLX
 import MLXLLM
 import MLXLMCommon
 
@@ -23,6 +24,7 @@ public final class SummaryService: ObservableObject {
     private var loadedRepo: String?
     private var loadedContextTokens = 8192
     private var tasks: [String: Task<Void, Never>] = [:]
+    private var idleUnloadTask: Task<Void, Never>?
 
     public init() {
         refreshStates()
@@ -110,7 +112,29 @@ public final class SummaryService: ObservableObject {
         if loadedRepo == repoId { container = nil; loadedRepo = nil; status = .idle }
     }
 
+    /// Frees the loaded MLX weights + Metal cache. Without this the model lived in
+    /// RAM forever after a summary — gigabytes resident at idle.
+    public func unload() {
+        idleUnloadTask?.cancel()
+        idleUnloadTask = nil
+        container = nil
+        loadedRepo = nil
+        status = .idle
+        MLX.GPU.clearCache()
+    }
+
+    /// Auto-unload after `seconds` of idle; any new load/generation cancels it.
+    public func scheduleIdleUnload(seconds: UInt64 = 300) {
+        idleUnloadTask?.cancel()
+        idleUnloadTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.unload()
+        }
+    }
+
     public func ensureLoaded(repoId: String) async {
+        idleUnloadTask?.cancel()
         if loadedRepo == repoId, container != nil { return }
         status = .loading
         let needGB = SummaryCatalog.all.first { $0.repoId == repoId }?.ramHintGB ?? 4
@@ -120,6 +144,11 @@ public final class SummaryService: ObservableObject {
             return
         }
         do {
+            // Cap MLX's Metal buffer cache. Without a limit MLX caches EVERY
+            // intermediate buffer of a long generation and never returns the memory —
+            // gigabytes of pressure that swapped the whole Mac during long-meeting
+            // summaries. Apple's own LLMEval sets a cache limit for exactly this.
+            MLX.GPU.set(cacheLimit: 128 * 1024 * 1024)
             let container = try await LLMModelFactory.shared.loadContainer(
                 configuration: ModelConfiguration(id: repoId)
             )
@@ -149,9 +178,14 @@ public final class SummaryService: ObservableObject {
     public func summarize(transcript: String, languageCode: String) async -> String {
         guard container != nil else { return "" }
         status = .generating
+        idleUnloadTask?.cancel()
+        defer {
+            MLX.GPU.clearCache()
+            scheduleIdleUnload()
+        }
 
         let maxGen = 6144
-        let budgetTokens = max(2000, loadedContextTokens - maxGen - 1200)
+        let budgetTokens = Self.promptBudgetTokens(context: loadedContextTokens, maxGen: maxGen)
         let budgetChars = budgetTokens * 2
 
         let raw: String
@@ -182,9 +216,21 @@ public final class SummaryService: ObservableObject {
         return SummarySanitize.clean(ThinkStripper.strip(raw), transcript: transcript)
     }
 
+    /// Prompt-token budget for ONE generation pass, capped at 12k for EVERY model.
+    /// The uncapped budget (context − maxGen − headroom = up to ~33.6k tokens) let an
+    /// 80-minute transcript run as a single pass: a multi-GB KV cache (prefill
+    /// accumulates UNquantized) + minutes of uninterrupted 100% GPU — the whole Mac
+    /// lagged. Capped, long meetings fall into the existing map-reduce chunking:
+    /// small KV peaks, short GPU bursts, the UI breathes between chunks.
+    nonisolated static func promptBudgetTokens(context: Int, maxGen: Int) -> Int {
+        max(2000, min(context - maxGen - 1200, 12000))
+    }
+
     /// One MLX generation pass. Uses `KVCacheSimple` (NO `maxKVSize`) so the
     /// `kvBits` cache quantization actually applies — `maybeQuantizeKVCache` skips
     /// rotating caches — keeping memory bounded WITHOUT silently dropping context.
+    /// Runs detached at `.utility` priority so the tokenizer/detokenizer CPU work
+    /// never competes with the main thread.
     private func generateOnce(system: String, transcript: String, languageCode: String, maxTokens: Int) async -> String {
         guard let container else { return "" }
         let user = SummaryPrompts.user(transcript: transcript, language: languageCode) + "\n\n/no_think"
@@ -192,22 +238,24 @@ public final class SummaryService: ObservableObject {
             maxTokens: maxTokens, kvBits: 8, quantizedKVStart: 256, temperature: 0.7, topP: 0.8
         )
         do {
-            return try await container.perform { (ctx: ModelContext) -> String in
-                let input = try await ctx.processor.prepare(
-                    input: UserInput(chat: [.system(system), .user(user)])
-                )
-                var detok = NaiveStreamingDetokenizer(tokenizer: ctx.tokenizer)
-                var text = ""
-                _ = try MLXLMCommon.generate(
-                    input: input, parameters: params, context: ctx
-                ) { (tokens: [Int]) -> GenerateDisposition in
-                    guard let last = tokens.last else { return .more }
-                    detok.append(token: last)
-                    if let piece = detok.next(), !piece.isEmpty { text += piece }
-                    return .more
+            return try await Task.detached(priority: .utility) {
+                try await container.perform { (ctx: ModelContext) -> String in
+                    let input = try await ctx.processor.prepare(
+                        input: UserInput(chat: [.system(system), .user(user)])
+                    )
+                    var detok = NaiveStreamingDetokenizer(tokenizer: ctx.tokenizer)
+                    var text = ""
+                    _ = try MLXLMCommon.generate(
+                        input: input, parameters: params, context: ctx
+                    ) { (tokens: [Int]) -> GenerateDisposition in
+                        guard let last = tokens.last else { return .more }
+                        detok.append(token: last)
+                        if let piece = detok.next(), !piece.isEmpty { text += piece }
+                        return .more
+                    }
+                    return text
                 }
-                return text
-            }
+            }.value
         } catch {
             status = .error(error.localizedDescription)
             return ""

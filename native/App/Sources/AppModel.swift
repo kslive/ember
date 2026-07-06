@@ -357,6 +357,9 @@ final class AppModel: ObservableObject {
                 showToast(tr("toast.summaryReady"), tone: .good)
             }
         }
+        // Free the CoreML model after 5 idle minutes — it otherwise stays resident
+        // (1.5–2+ GB) between meetings; the next recording reloads it in seconds.
+        transcription.scheduleIdleUnload()
     }
 
     /// Generates + persists a summary using ONLY the user-selected model — no silent

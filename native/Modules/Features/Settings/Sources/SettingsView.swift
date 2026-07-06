@@ -14,9 +14,19 @@ public struct SettingsView: View {
     @ObservedObject private var transcription: TranscriptionService
     @ObservedObject private var summary: SummaryService
     @State private var tab: Tab = .general
+    @State private var pendingDelete: PendingModelDelete?
     @StateObject private var devices = AudioDevicesModel()
     @Namespace private var tabNS
     @Namespace private var segNS
+
+    /// A downloaded model queued for deletion (confirm dialog payload).
+    private struct PendingModelDelete {
+        let name: String
+        let size: String
+        let isWhisper: Bool
+        let id: String
+        let repoId: String
+    }
 
     enum Tab: String, CaseIterable {
         case general, recording, transcription, summary, updates
@@ -41,29 +51,51 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 18) {
-                Text(locale.t("settings.title"))
-                    .font(EmberType.semibold(26)).tracking(-0.52)
-                    .foregroundStyle(EmberColor.text)
-                tabBar
-            }
-            .padding(.horizontal, 36)
-            .padding(.top, 40)
-            .padding(.bottom, 8)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    content
+        ZStack {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(locale.t("settings.title"))
+                        .font(EmberType.semibold(26)).tracking(-0.52)
+                        .foregroundStyle(EmberColor.text)
+                    tabBar
                 }
-                .frame(maxWidth: 760, alignment: .leading)
                 .padding(.horizontal, 36)
-                .padding(.vertical, 20)
+                .padding(.top, 40)
+                .padding(.bottom, 8)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        content
+                    }
+                    .frame(maxWidth: 760, alignment: .leading)
+                    .padding(.horizontal, 36)
+                    .padding(.vertical, 20)
+                }
+                .scrollIndicators(.never)
             }
-            .scrollIndicators(.never)
+            if let pd = pendingDelete {
+                EmberDialog(tone: .danger, title: locale.t("dialog.deleteModel.title"),
+                            message: locale.t("dialog.deleteModel.msg", ["name": pd.name, "size": pd.size]),
+                            confirmLabel: locale.t("common.delete"), cancelLabel: locale.t("common.cancel"),
+                            onConfirm: { confirmModelDelete(pd) }, onCancel: { pendingDelete = nil })
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(EmberColor.bg)
+    }
+
+    /// Deletes the model from disk; a deleted SELECTED model falls back to the
+    /// catalog default so the pipeline never silently re-downloads the deleted one.
+    private func confirmModelDelete(_ pd: PendingModelDelete) {
+        pendingDelete = nil
+        if pd.isWhisper {
+            transcription.delete(pd.id)
+            if settings.whisperModelId == pd.id { settings.whisperModelId = TranscriptionCatalog.defaultId }
+        } else {
+            summary.delete(id: pd.id, repoId: pd.repoId)
+            if settings.summaryModelId == pd.id { settings.summaryModelId = SummaryCatalog.defaultId }
+        }
     }
 
     private var tabBar: some View {
@@ -173,20 +205,54 @@ public struct SettingsView: View {
         sectionTitle(locale.t(isWhisper ? "settings.transcription.title" : "settings.summary.title"))
         if isWhisper {
             ForEach(TranscriptionCatalog.all) { m in
-                EmberModelCard(name: m.displayName, desc: locale.t("model.ramHint", ["g": "2"]), meta: "\(m.sizeMB) \(sizeUnit)",
-                               badge: badgeText(m.badge),
-                               state: whisperState(m.id), totalMB: m.sizeMB, errorText: whisperError(m.id),
-                               onAction: { whisperAction(m.id) })
+                VStack(alignment: .trailing, spacing: 4) {
+                    EmberModelCard(name: m.displayName, desc: locale.t("model.ramHint", ["g": "2"]), meta: "\(m.sizeMB) \(sizeUnit)",
+                                   badge: badgeText(m.badge),
+                                   state: whisperState(m.id), totalMB: m.sizeMB, errorText: whisperError(m.id),
+                                   onAction: { whisperAction(m.id) })
+                    if isDeletable(whisperState(m.id)) {
+                        deleteLink(PendingModelDelete(name: m.displayName, size: "\(m.sizeMB) \(sizeUnit)",
+                                                      isWhisper: true, id: m.id, repoId: ""))
+                    }
+                }
             }
         } else {
             ForEach(SummaryCatalog.all) { m in
-                EmberModelCard(name: m.displayName, desc: locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
-                               meta: "\(m.sizeMB) \(sizeUnit) · \(m.contextTokens) \(locale.t("model.tokens"))",
-                               badge: badgeText(m.badge),
-                               state: summaryState(m.id), totalMB: m.sizeMB, errorText: summaryError(m.id),
-                               onAction: { summaryAction(m.id) })
+                VStack(alignment: .trailing, spacing: 4) {
+                    EmberModelCard(name: m.displayName, desc: locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
+                                   meta: "\(m.sizeMB) \(sizeUnit) · \(m.contextTokens) \(locale.t("model.tokens"))",
+                                   badge: badgeText(m.badge),
+                                   state: summaryState(m.id), totalMB: m.sizeMB, errorText: summaryError(m.id),
+                                   onAction: { summaryAction(m.id) })
+                    if isDeletable(summaryState(m.id)) {
+                        deleteLink(PendingModelDelete(name: m.displayName, size: "\(m.sizeMB) \(sizeUnit)",
+                                                      isWhisper: false, id: m.id, repoId: m.repoId))
+                    }
+                }
             }
         }
+    }
+
+    private func isDeletable(_ s: ModelCardState) -> Bool {
+        switch s {
+        case .ready, .selected: true
+        default: false
+        }
+    }
+
+    /// Small trailing "Delete" link under a downloaded model card.
+    private func deleteLink(_ pd: PendingModelDelete) -> some View {
+        Button {
+            pendingDelete = pd
+        } label: {
+            Text(locale.t("settings.model.delete"))
+                .font(EmberType.regular(12))
+                .foregroundStyle(EmberColor.text3)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(EmberPressStyle())
+        .hoverCursor()
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     @ViewBuilder private var updatesTab: some View {
