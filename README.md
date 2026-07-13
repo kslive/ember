@@ -14,7 +14,7 @@ nothing is uploaded.
 
 ![macOS](https://img.shields.io/badge/macOS-14.4%2B-000?style=flat-square&logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000?style=flat-square)
-![version](https://img.shields.io/badge/version-1.5.1-f97316?style=flat-square)
+![version](https://img.shields.io/badge/version-1.5.2-f97316?style=flat-square)
 ![local](https://img.shields.io/badge/100%25-on--device-22c55e?style=flat-square)
 
 <img src="assets/hero.en.png" width="900" alt="Ember"/>
@@ -50,7 +50,10 @@ you add a key.
 ## Export to Obsidian
 
 Each summary can be written to a Markdown file (YAML front-matter, tasks, timestamps) in a
-folder you pick — for example, an Obsidian vault.
+folder you pick, and opened in **Obsidian** with one click. If **[Sage](https://github.com/kslive/sage)**
+is installed, it takes priority: the button turns into a glowing **Open in Sage** and the note
+opens right in Sage (switching its space to the note's folder when needed). Remove Sage — and
+the Obsidian button is back.
 
 <div align="center"><img src="assets/obsidian.en.png" width="860" alt="Markdown / Obsidian export"/></div>
 
@@ -58,7 +61,7 @@ folder you pick — for example, an Obsidian vault.
 
 Requires **macOS 14.4+** on **Apple Silicon**.
 
-1. Download `Ember_1.5.1_aarch64.dmg` from the [Releases](../../releases/latest) page.
+1. Download `Ember_1.5.2_aarch64.dmg` from the [Releases](../../releases/latest) page.
 2. Drag **Ember.app** into **Applications**.
 3. The app is ad-hoc signed (not notarized), so the first launch is blocked. Either
    right-click **Ember.app → Open → Open**, or run:

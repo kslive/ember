@@ -280,7 +280,9 @@ public struct OnboardingView: View {
     private var whisperCards: [CardVM] {
         TranscriptionCatalog.all.map { m in
             CardVM(id: m.id, name: m.displayName,
-                   desc: m.engine == .gigaAM ? locale.t("model.gigaam.desc") : locale.t("model.ramHint", ["g": "2"]),
+                   desc: m.engine == .gigaAM
+                       ? locale.t("model.gigaam.desc") + " · " + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"])
+                       : locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
                    meta: "\(m.sizeMB) \(sizeUnit)", badge: badgeText(m.badge), sizeMB: m.sizeMB)
         }
     }

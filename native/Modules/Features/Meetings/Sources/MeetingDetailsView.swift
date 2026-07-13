@@ -226,12 +226,18 @@ public struct MeetingDetailsView: View {
                 Rectangle().fill(EmberColor.border).frame(height: 1)
                 HStack(spacing: 14) {
                     Text(locale.t("meeting.savedMd")).font(EmberType.regular(12)).foregroundStyle(EmberColor.text3)
+                        .lineLimit(1)
                     Spacer()
-                    Button(action: { openInObsidian(summary.markdown) }, label: {
-                        Text(locale.t("meeting.openObsidian")).font(EmberType.medium(12.5)).foregroundStyle(EmberColor.accentText)
-                            .contentShape(Rectangle())
-                    })
-                    .buttonStyle(EmberPressStyle()).hoverCursor()
+                    if SageIntegration.isInstalled {
+                        SageGlowButton(locale.t("meeting.openSage")) { openInSage(summary.markdown) }
+                            .layoutPriority(1)
+                    } else {
+                        Button(action: { openInObsidian(summary.markdown) }, label: {
+                            Text(locale.t("meeting.openObsidian")).font(EmberType.medium(12.5)).foregroundStyle(EmberColor.accentText)
+                                .contentShape(Rectangle())
+                        })
+                        .buttonStyle(EmberPressStyle()).hoverCursor()
+                    }
                 }
                 .padding(.horizontal, 30).padding(.vertical, 16)
             }
@@ -288,6 +294,15 @@ public struct MeetingDetailsView: View {
 
     /// Writes the summary .md into the chosen export folder, then opens THAT file in
     /// Obsidian by path (not a throwaway new note). Falls back to the default app.
+    /// Writes the export .md (same file the Obsidian flow uses) and deep-links it
+    /// into Sage (`sage://open?path=…`).
+    private func openInSage(_ md: String) {
+        guard let url = SummaryExport.write(markdown: md, title: meeting.title, createdAt: meeting.createdAt,
+                                            typeLabel: locale.t("meeting.exportType"),
+                                            folder: settings.exportFolderPath) else { return }
+        SageIntegration.open(file: url)
+    }
+
     private func openInObsidian(_ md: String) {
         guard let url = SummaryExport.write(markdown: md, title: meeting.title, createdAt: meeting.createdAt,
                                             typeLabel: locale.t("meeting.exportType"),

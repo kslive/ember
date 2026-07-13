@@ -63,6 +63,10 @@ final class OnboardingTests: XCTestCase {
             XCTAssertGreaterThan(m.ramHintGB, 0)
         }
         XCTAssertEqual(SummaryCatalog.all.filter { $0.badge == .recommended }.count, 1)
+        let sizes = SummaryCatalog.all.map(\.sizeMB)
+        XCTAssertEqual(sizes, sizes.sorted(), "summary models must be sorted by size ascending")
+        let rams = SummaryCatalog.all.map(\.ramHintGB)
+        XCTAssertEqual(rams, rams.sorted(), "summary models must be sorted by RAM ascending")
     }
 
     func testTranscriptionCatalog() {
@@ -76,6 +80,11 @@ final class OnboardingTests: XCTestCase {
             XCTAssertGreaterThan(m.sizeMB, 0)
         }
         XCTAssertEqual(TranscriptionCatalog.all.filter { $0.engine == .gigaAM }.count, 1)
+        let sizes = TranscriptionCatalog.all.map(\.sizeMB)
+        XCTAssertEqual(sizes, sizes.sorted(), "transcription models must be sorted by size ascending")
+        for m in TranscriptionCatalog.all {
+            XCTAssertGreaterThan(m.ramHintGB, 0)
+        }
     }
 
     func testAccentPresets() {

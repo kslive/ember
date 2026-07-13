@@ -44,6 +44,8 @@ final class AppModel: ObservableObject {
     /// When the current recording STARTED — the meeting's createdAt. Stamping Date()
     /// at stop labeled every meeting with its END time (sidebar + Obsidian export).
     private var recordingStartedAt: Date?
+    private var recordingCalendarTitle: String?
+    private var calendarMeetingTitles: [String: String] = [:]
     private var isStarting = false
     private var isSummarizing = false
     private var liveTask: Task<Void, Never>?
@@ -146,6 +148,7 @@ final class AppModel: ObservableObject {
             }
             autoStarted = auto
             recordingStartedAt = Date()
+            recordingCalendarTitle = SettingsStore.calendarTitlesOn() ? CalendarTitles.eventTitle(at: Date()) : nil
             startLiveLoop(id)
             notify("Recording started", "Запись началась", "开始录音")
             if SettingsStore.notifyOnStartOn() { showToast(tr("toast.recReminder"), tone: .warn) } else { showToast(tr("toast.recStarted"), tone: .info) }
@@ -282,6 +285,7 @@ final class AppModel: ObservableObject {
             engine.reset()
             recordingId = nil
             recordingStartedAt = nil
+            recordingCalendarTitle = nil
             autoStarted = false
             showToast(tr("toast.autoDiscarded"), tone: .info)
             return
@@ -289,7 +293,10 @@ final class AppModel: ObservableObject {
         let micSamples = engine.liveSamples()
         let systemSamples = engine.systemSamples()
         let id = recordingId ?? UUID().uuidString
-        let meeting = Meeting(id: id, title: defaultTitle(language),
+        let calendarTitle = recordingCalendarTitle
+        recordingCalendarTitle = nil
+        if let calendarTitle { calendarMeetingTitles[id] = calendarTitle }
+        let meeting = Meeting(id: id, title: calendarTitle ?? defaultTitle(language),
                               createdAt: recordingStartedAt ?? Date(), durationSeconds: engine.elapsed)
         store.upsert(meeting)
         engine.reset()
@@ -436,8 +443,16 @@ final class AppModel: ObservableObject {
     }
 
     /// Shared tail for both summary paths: save, AI-title rename, auto-export.
+    /// A calendar-sourced title wins over the AI one: the meeting was named at
+    /// stop from the event running at recording start, so the AI rename is
+    /// skipped (session-scoped — after a relaunch "Перегенерировать" renames
+    /// again; acceptable edge).
     private func persistSummary(meetingId id: String, markdown md: String) {
         store.saveSummary(meetingId: id, summary: MeetingSummary(markdown: md))
+        if let calendarTitle = calendarMeetingTitles[id] {
+            exportSummary(meetingId: id, markdown: md, title: calendarTitle)
+            return
+        }
         let topic = SummaryMarkdown.title(from: md)
         if let topic { store.rename(id, title: topic) }
         exportSummary(meetingId: id, markdown: md, title: topic)

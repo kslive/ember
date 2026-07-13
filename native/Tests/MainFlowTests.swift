@@ -227,3 +227,16 @@ final class ProcessingStageTests: XCTestCase {
         }
     }
 }
+
+/// Sage deep-link building (integration button in meeting details).
+final class SageIntegrationTests: XCTestCase {
+    func testOpenURLEncodesPath() throws {
+        let path = "/Users/kslff/Documents/kslff-space/Работа встреча.md"
+        let url = try XCTUnwrap(SageIntegration.openURL(forPath: path))
+        XCTAssertEqual(url.scheme, "sage")
+        XCTAssertEqual(url.host, "open")
+        let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        XCTAssertEqual(comps?.queryItems?.first(where: { $0.name == "path" })?.value, path)
+        XCTAssertFalse(url.absoluteString.contains(" "))
+    }
+}

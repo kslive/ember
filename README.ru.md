@@ -13,7 +13,7 @@
 
 ![macOS](https://img.shields.io/badge/macOS-14.4%2B-000?style=flat-square&logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000?style=flat-square)
-![version](https://img.shields.io/badge/version-1.5.1-f97316?style=flat-square)
+![version](https://img.shields.io/badge/version-1.5.2-f97316?style=flat-square)
 ![local](https://img.shields.io/badge/100%25-локально-22c55e?style=flat-square)
 
 <img src="assets/hero.ru.png" width="900" alt="Ember"/>
@@ -50,7 +50,10 @@ DeepSeek, выключена, пока вы не добавите ключ.
 ## Экспорт в Obsidian
 
 Каждое саммари можно сохранить в Markdown-файл (YAML-фронтматтер, задачи, тайм-коды) в
-выбранную папку — например, в волт Obsidian.
+выбранную папку и открыть в **Obsidian** одной кнопкой. Если установлен
+**[Sage](https://github.com/kslive/sage)** — приоритет у него: кнопка превращается в светящуюся
+**«Открыть в Sage»**, и заметка открывается прямо в Sage (при необходимости он сам переключит
+пространство на папку заметки). Удалите Sage — вернётся кнопка Obsidian.
 
 <div align="center"><img src="assets/obsidian.ru.png" width="860" alt="Экспорт в Markdown / Obsidian"/></div>
 
@@ -58,7 +61,7 @@ DeepSeek, выключена, пока вы не добавите ключ.
 
 Нужна **macOS 14.4+** на **Apple Silicon**.
 
-1. Скачайте `Ember_1.5.1_aarch64.dmg` со страницы [Releases](../../releases/latest).
+1. Скачайте `Ember_1.5.2_aarch64.dmg` со страницы [Releases](../../releases/latest).
 2. Перетащите **Ember.app** в **Программы**.
 3. Приложение подписано ad-hoc (без нотаризации), поэтому первый запуск блокируется.
    Либо правый клик по **Ember.app → Открыть → Открыть**, либо в Терминале:

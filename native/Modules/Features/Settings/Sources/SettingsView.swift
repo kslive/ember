@@ -14,6 +14,7 @@ public struct SettingsView: View {
     @ObservedObject private var transcription: TranscriptionService
     @ObservedObject private var summary: SummaryService
     @State private var tab: Tab = .general
+    @State private var calendarAccess: CalendarTitles.Access = .notDetermined
     @State private var pendingDelete: PendingModelDelete?
     @State private var deepseekDraft = ""
     @State private var deepseekModels: [String] = []
@@ -145,13 +146,23 @@ public struct SettingsView: View {
         }
     }
 
+    /// General tab, grouped into related sections (appearance / notifications /
+    /// data & export) — the flat list outgrew itself.
     @ViewBuilder private var generalTab: some View {
+        sectionTitle(locale.t("settings.group.appearance"))
         segmentCard(locale.t("settings.theme"), locale.t("settings.theme.desc")) { themeSegmented }
         segmentCard(locale.t("settings.accent"), locale.t("settings.accent.desc")) { accentSwatches }
         segmentCard(locale.t("settings.language"), locale.t("settings.language.desc")) { languageSegmented }
+
+        sectionTitle(locale.t("settings.group.notifications")).padding(.top, 14)
         settingRow(locale.t("settings.notifications"), locale.t("settings.notifications.desc")) {
             EmberToggle(isOn: $settings.notificationsEnabled)
         }
+
+        sectionTitle(locale.t("settings.group.calendar")).padding(.top, 14)
+        calendarCard
+
+        sectionTitle(locale.t("settings.group.data")).padding(.top, 14)
         pathCard(locale.t("settings.exportFolder"), locale.t("settings.exportFolder.desc"),
                  path: settings.exportFolderPath, actionTitle: locale.t("common.choose"),
                  glyph: .file) { chooseExportFolder() }
@@ -162,6 +173,63 @@ public struct SettingsView: View {
                           actionTitle: locale.t("common.open"), glyph: .file) { openDataFolder() }
             }
         }
+    }
+
+    /// Apple Calendar integration: toggle requests EventKit access on first
+    /// enable; the card explains the behavior and shows the current access state.
+    private var calendarCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(locale.t("settings.calendar")).font(EmberType.semibold(15)).foregroundStyle(EmberColor.text)
+                        Text(locale.t("settings.calendar.desc"))
+                            .font(EmberType.regular(13)).lineSpacing(3).foregroundStyle(EmberColor.text2)
+                    }
+                    Spacer(minLength: 12)
+                    EmberToggle(isOn: $settings.calendarTitlesEnabled)
+                }
+                if settings.calendarTitlesEnabled {
+                    switch calendarAccess {
+                    case .granted:
+                        HStack(spacing: 6) {
+                            Circle().fill(EmberColor.good).frame(width: 6, height: 6)
+                            Text(locale.t("settings.calendar.granted"))
+                                .font(EmberType.regular(12.5)).foregroundStyle(EmberColor.good)
+                        }
+                    case .denied:
+                        HStack(spacing: 10) {
+                            Text(locale.t("settings.calendar.denied"))
+                                .font(EmberType.regular(12.5)).foregroundStyle(EmberColor.warn)
+                            Button(action: openCalendarPrivacy, label: {
+                                Text(locale.t("settings.calendar.open"))
+                                    .font(EmberType.medium(12.5)).foregroundStyle(EmberColor.accentText)
+                                    .contentShape(Rectangle())
+                            })
+                            .buttonStyle(.plain).hoverCursor()
+                        }
+                    case .notDetermined:
+                        EmptyView()
+                    }
+                }
+            }
+        }
+        .onAppear { calendarAccess = CalendarTitles.accessStatus() }
+        .onChange(of: settings.calendarTitlesEnabled) { _, on in
+            guard on else { return }
+            Task { @MainActor in
+                if CalendarTitles.accessStatus() == .notDetermined {
+                    _ = await CalendarTitles.requestAccess()
+                }
+                calendarAccess = CalendarTitles.accessStatus()
+            }
+        }
+    }
+
+    private func openCalendarPrivacy() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")
+        else { return }
+        NSWorkspace.shared.open(url)
     }
 
     /// Accent swatch row (Sage-style): tap a circle to recolor the whole app.
@@ -234,7 +302,9 @@ public struct SettingsView: View {
             ForEach(TranscriptionCatalog.all) { m in
                 VStack(alignment: .trailing, spacing: 4) {
                     EmberModelCard(name: m.displayName,
-                                   desc: m.engine == .gigaAM ? locale.t("model.gigaam.desc") : locale.t("model.ramHint", ["g": "2"]),
+                                   desc: m.engine == .gigaAM
+                                       ? locale.t("model.gigaam.desc") + " · " + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"])
+                                       : locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
                                    meta: "\(m.sizeMB) \(sizeUnit)",
                                    badge: badgeText(m.badge),
                                    state: whisperState(m.id), totalMB: m.sizeMB, errorText: whisperError(m.id),

@@ -14,6 +14,7 @@ public final class SettingsStore: ObservableObject {
     public static let micDeviceKey = "ember.micDevice"
     public static let systemDeviceKey = "ember.systemDevice"
     public static let diarizationKey = "ember.diarization"
+    public static let calendarTitlesKey = "ember.calendarTitles"
     public static let deepseekModelKey = "ember.deepseekModel"
     private static let deepseekAccount = "deepseek-api-key"
 
@@ -23,6 +24,10 @@ public final class SettingsStore: ObservableObject {
 
     @Published public var whisperModelId: String {
         didSet { UserDefaults.standard.set(whisperModelId, forKey: Self.whisperKey) }
+    }
+
+    @Published public var calendarTitlesEnabled: Bool {
+        didSet { UserDefaults.standard.set(calendarTitlesEnabled, forKey: Self.calendarTitlesKey) }
     }
 
     @Published public var autoSummary: Bool {
@@ -72,7 +77,13 @@ public final class SettingsStore: ObservableObject {
         preferredMicUID = UserDefaults.standard.string(forKey: Self.micDeviceKey) ?? ""
         preferredSystemUID = UserDefaults.standard.string(forKey: Self.systemDeviceKey) ?? ""
         diarizationEnabled = (UserDefaults.standard.object(forKey: Self.diarizationKey) as? Bool) ?? true
+        calendarTitlesEnabled = (UserDefaults.standard.object(forKey: Self.calendarTitlesKey) as? Bool) ?? false
         deepseekModel = UserDefaults.standard.string(forKey: Self.deepseekModelKey) ?? ""
+    }
+
+    /// Meeting titles from Apple Calendar (opt-in; default off).
+    public static func calendarTitlesOn() -> Bool {
+        (UserDefaults.standard.object(forKey: calendarTitlesKey) as? Bool) ?? false
     }
 
     /// DeepSeek API key (device-bound encrypted file — see SecretStore). nil = cloud path disabled.

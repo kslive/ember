@@ -42,7 +42,7 @@ struct EmberApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        Window("Ember", id: "main") {
             Group {
                 if onboarded {
                     AppShell(model: model)
@@ -75,6 +75,7 @@ private struct MenuBarContent: View {
     @ObservedObject var model: AppModel
     @ObservedObject var locale: LocaleManager
     var onboarded: Bool
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         if onboarded {
@@ -108,8 +109,11 @@ private struct MenuBarContent: View {
         Button(locale.t("menubar.quit")) { NSApplication.shared.terminate(nil) }
     }
 
+    /// The red-X close DEALLOCATES the SwiftUI window — `NSApp.windows` then has
+    /// no main window, so makeKeyAndOrderFront alone showed nothing. openWindow on
+    /// the single Window scene recreates it (or brings the live one to front).
     private func activateApp() {
+        openWindow(id: "main")
         NSApplication.shared.activate(ignoringOtherApps: true)
-        NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
     }
 }
