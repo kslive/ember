@@ -1,5 +1,5 @@
 {
-  "originHash" : "383e6ab2c9e9e704ed48948488506254c3be92377c17693210d40ef130dd47fd",
+  "originHash" : "12c027c269a52dc4cdac8d345352511cb2372b2cd4d8bee0183ab43ec6748036",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -53,6 +53,15 @@
       "state" : {
         "revision" : "dddb0b3871390dd9dea8e7ff2c347cf7e74cec9d",
         "version" : "2.25.7"
+      }
+    },
+    {
+      "identity" : "sherpa-onnx-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/willwade/sherpa-onnx-spm",
+      "state" : {
+        "revision" : "45fc962cfd0a47f389434616de4d3d212c764c9f",
+        "version" : "1.13.16"
       }
     },
     {

@@ -209,3 +209,21 @@ final class MainFlowTests: XCTestCase {
         XCTAssertEqual(Nav.adjacentIndex(count: 3, current: 2, delta: -99), 0)
     }
 }
+
+/// Post-recording pipeline stage plan (drives the "step N of M" indicator).
+final class ProcessingStageTests: XCTestCase {
+    func testPlanVariants() {
+        XCTAssertEqual(ProcessingStage.plan(diarize: true, summarize: true), [.transcribe, .diarize, .summarize])
+        XCTAssertEqual(ProcessingStage.plan(diarize: false, summarize: true), [.transcribe, .summarize])
+        XCTAssertEqual(ProcessingStage.plan(diarize: true, summarize: false), [.transcribe, .diarize])
+        XCTAssertEqual(ProcessingStage.plan(diarize: false, summarize: false), [.transcribe])
+    }
+
+    func testTitleKeysExistInAllLanguages() {
+        for stage in [ProcessingStage.transcribe, .diarize, .summarize] {
+            for lang in AppLanguage.allCases {
+                XCTAssertNotNil(LocalizedStrings.table[lang]?[stage.titleKey], "\(lang) \(stage.titleKey)")
+            }
+        }
+    }
+}

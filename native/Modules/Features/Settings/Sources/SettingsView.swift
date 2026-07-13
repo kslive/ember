@@ -147,6 +147,7 @@ public struct SettingsView: View {
 
     @ViewBuilder private var generalTab: some View {
         segmentCard(locale.t("settings.theme"), locale.t("settings.theme.desc")) { themeSegmented }
+        segmentCard(locale.t("settings.accent"), locale.t("settings.accent.desc")) { accentSwatches }
         segmentCard(locale.t("settings.language"), locale.t("settings.language.desc")) { languageSegmented }
         settingRow(locale.t("settings.notifications"), locale.t("settings.notifications.desc")) {
             EmberToggle(isOn: $settings.notificationsEnabled)
@@ -161,6 +162,26 @@ public struct SettingsView: View {
                           actionTitle: locale.t("common.open"), glyph: .file) { openDataFolder() }
             }
         }
+    }
+
+    /// Accent swatch row (Sage-style): tap a circle to recolor the whole app.
+    private var accentSwatches: some View {
+        HStack(spacing: 11) {
+            ForEach(AccentPreset.all) { preset in
+                Circle()
+                    .fill(Color(hex: preset.base))
+                    .frame(width: 26, height: 26)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(EmberColor.text, lineWidth: theme.accentId == preset.id ? 2 : 0)
+                            .padding(-4)
+                    )
+                    .padding(4)
+                    .contentShape(Circle())
+                    .onTapGesture { theme.setAccent(preset) }
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: theme.accentId)
     }
 
     /// Card with a title, description and a segmented control underneath (mockup S1).
@@ -212,7 +233,9 @@ public struct SettingsView: View {
         if isWhisper {
             ForEach(TranscriptionCatalog.all) { m in
                 VStack(alignment: .trailing, spacing: 4) {
-                    EmberModelCard(name: m.displayName, desc: locale.t("model.ramHint", ["g": "2"]), meta: "\(m.sizeMB) \(sizeUnit)",
+                    EmberModelCard(name: m.displayName,
+                                   desc: m.engine == .gigaAM ? locale.t("model.gigaam.desc") : locale.t("model.ramHint", ["g": "2"]),
+                                   meta: "\(m.sizeMB) \(sizeUnit)",
                                    badge: badgeText(m.badge),
                                    state: whisperState(m.id), totalMB: m.sizeMB, errorText: whisperError(m.id),
                                    onAction: { whisperAction(m.id) })

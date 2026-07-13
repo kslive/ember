@@ -7,6 +7,7 @@ excluded:
   - Derived
   - .build
   - "**/Generated"
+  - "**/Vendor"
 
 # Short, idiomatic names are pervasive in the CoreAudio/DSP code (au, dev, ch, n, s,
 # tf, hw, kr…). Keep the casing checks, drop the min-length floor. `excluded` keeps the

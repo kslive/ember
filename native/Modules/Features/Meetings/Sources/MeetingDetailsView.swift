@@ -14,6 +14,7 @@ public struct MeetingDetailsView: View {
     private let segments: [TranscriptSegment]
     private let summary: MeetingSummary?
     private let isProcessing: Bool
+    private let progress: ProcessingProgress?
     private let onRegenerate: () -> Void
     private let onRename: (String) -> Void
 
@@ -24,12 +25,14 @@ public struct MeetingDetailsView: View {
     private let minPane: CGFloat = 320
 
     public init(meeting: Meeting, segments: [TranscriptSegment], summary: MeetingSummary?, isProcessing: Bool,
+                progress: ProcessingProgress? = nil,
                 summaryService: SummaryService,
                 onRegenerate: @escaping () -> Void, onRename: @escaping (String) -> Void = { _ in }) {
         self.meeting = meeting
         self.segments = segments
         self.summary = summary
         self.isProcessing = isProcessing
+        self.progress = progress
         summarySvc = summaryService
         self.onRegenerate = onRegenerate
         self.onRename = onRename
@@ -144,18 +147,18 @@ public struct MeetingDetailsView: View {
                             .font(EmberType.regular(13.5)).foregroundStyle(EmberColor.text3)
                     } else {
                         ForEach(segments) { seg in
-                            HStack(alignment: .top, spacing: 16) {
+                            HStack(alignment: .top, spacing: 6) {
                                 Text(seg.timecode).font(EmberType.mono(12)).foregroundStyle(EmberColor.text3).padding(.top, 2)
                                 Group {
                                     if let lbl = SpeakerLabel.tag(source: seg.source, speaker: seg.speaker,
                                                                   meShort: locale.t("speaker.me.short"),
                                                                   themShort: locale.t("speaker.them.short")) {
-                                        Text(lbl).font(EmberType.mono(11)).foregroundStyle(EmberColor.accentText)
+                                        Text(lbl).font(EmberType.mono(11)).foregroundStyle(EmberColor.accentText).fixedSize()
                                     } else {
                                         Color.clear
                                     }
                                 }
-                                .frame(width: 34, alignment: .leading)
+                                .frame(width: 27, alignment: .leading)
                                 .padding(.top, 2)
                                 Text(seg.text).font(EmberType.regular(14.5)).lineSpacing(8).foregroundStyle(EmberColor.text)
                                 Spacer(minLength: 0)
@@ -172,13 +175,42 @@ public struct MeetingDetailsView: View {
         }
     }
 
-    @ViewBuilder private var summaryPane: some View {
-        if isProcessing {
-            VStack(spacing: 14) {
-                Spinner()
+    /// Staged processing indicator: spinner + "step N of M" + what is happening
+    /// right now, cross-fading upward as the pipeline advances (transcribe →
+    /// diarize → summarize). Single-step runs (regenerate) show just the title.
+    private var processingState: some View {
+        VStack(spacing: 18) {
+            Spinner()
+            if let progress {
+                VStack(spacing: 9) {
+                    if progress.total > 1 {
+                        Text(locale.t("processing.step", ["n": "\(progress.step)", "t": "\(progress.total)"]))
+                            .font(EmberType.mono(10.5)).tracking(1.2)
+                            .foregroundStyle(EmberColor.text3)
+                            .textCase(.uppercase)
+                    }
+                    Text(locale.t(progress.stage.titleKey))
+                        .font(EmberType.medium(13.5)).foregroundStyle(EmberColor.text2)
+                }
+                .id(progress.step)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .move(edge: .top).combined(with: .opacity)
+                ))
+                if progress.total > 1 {
+                    OnboardingDots(active: progress.step - 1, total: progress.total)
+                }
+            } else {
                 Text(locale.t("meeting.generating")).font(EmberType.regular(13.5)).foregroundStyle(EmberColor.text2)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: progress?.step ?? 0)
+    }
+
+    @ViewBuilder private var summaryPane: some View {
+        if isProcessing {
+            processingState
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let summary, !summary.markdown.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 summaryLabel

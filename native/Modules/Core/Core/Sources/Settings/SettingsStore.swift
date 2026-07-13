@@ -75,18 +75,18 @@ public final class SettingsStore: ObservableObject {
         deepseekModel = UserDefaults.standard.string(forKey: Self.deepseekModelKey) ?? ""
     }
 
-    /// DeepSeek API key (Keychain — never UserDefaults). nil = cloud path disabled.
+    /// DeepSeek API key (device-bound encrypted file — see SecretStore). nil = cloud path disabled.
     public static func deepseekKey() -> String? {
-        let v = KeychainStore.get(deepseekAccount) ?? ""
+        let v = SecretStore.get(deepseekAccount) ?? ""
         return v.isEmpty ? nil : v
     }
 
     public static func setDeepseekKey(_ key: String) {
-        KeychainStore.set(key, account: deepseekAccount)
+        SecretStore.set(key, account: deepseekAccount)
     }
 
     public static func deleteDeepseekKey() {
-        KeychainStore.delete(deepseekAccount)
+        SecretStore.delete(deepseekAccount)
         UserDefaults.standard.removeObject(forKey: deepseekModelKey)
     }
 

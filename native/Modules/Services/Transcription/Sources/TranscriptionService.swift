@@ -1,7 +1,27 @@
+import AVFAudio
 import Combine
 import Core
 import Foundation
+import SherpaOnnx
 import WhisperKit
+
+/// Serialized, Sendable holder for a sherpa-onnx recognizer (GigaAM). The C-backed
+/// recognizer isn't documented as reentrant, and the final pass decodes mic+system
+/// CONCURRENTLY — the lock turns that into two sequential CPU decodes.
+private final class GigaBox: @unchecked Sendable {
+    private let rec: SherpaOnnxOfflineRecognizer
+    private let lock = NSLock()
+
+    init(rec: SherpaOnnxOfflineRecognizer) {
+        self.rec = rec
+    }
+
+    func decode(_ samples: [Float]) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return rec.decode(samples: samples, sampleRate: 16000).text
+    }
+}
 
 public enum TranscriptionStatus: Equatable {
     case idle
@@ -20,16 +40,24 @@ public final class TranscriptionService: ObservableObject {
     @Published public private(set) var states: [String: ModelDownloadState] = [:]
 
     private var kit: WhisperKit?
+    private var giga: GigaBox?
     private var loadedModel: String?
     private var tasks: [String: Task<Void, Never>] = [:]
     private var idleUnloadTask: Task<Void, Never>?
+
+    /// Engine-aware on-disk location for a catalog model.
+    private static func modelDir(_ variant: String) -> URL {
+        TranscriptionCatalog.engine(for: variant) == .gigaAM
+            ? ModelPaths.gigaAMModelDir(variant)
+            : ModelPaths.whisperModelDir(variant)
+    }
 
     public init() {
         refreshStates()
     }
 
     public var isReady: Bool {
-        kit != nil
+        kit != nil || giga != nil
     }
 
     /// Re-scans disk and updates `states` for every catalog model.
@@ -41,6 +69,12 @@ public final class TranscriptionService: ObservableObject {
     }
 
     public func isDownloaded(_ variant: String) -> Bool {
+        if TranscriptionCatalog.engine(for: variant) == .gigaAM {
+            let dir = ModelPaths.gigaAMModelDir(variant)
+            return GigaAMFiles.names.allSatisfy {
+                FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path)
+            }
+        }
         let dir = ModelPaths.whisperModelDir(variant)
         guard let items = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
         func has(_ prefix: String) -> Bool {
@@ -69,14 +103,14 @@ public final class TranscriptionService: ObservableObject {
     public func cancelDownload(_ variant: String) {
         tasks[variant]?.cancel()
         tasks[variant] = nil
-        try? FileManager.default.removeItem(at: ModelPaths.whisperModelDir(variant))
+        try? FileManager.default.removeItem(at: Self.modelDir(variant))
         states[variant] = isDownloaded(variant) ? .ready : .absent
     }
 
     public func cancelAllDownloads() {
         for (id, t) in tasks {
             t.cancel()
-            try? FileManager.default.removeItem(at: ModelPaths.whisperModelDir(id))
+            try? FileManager.default.removeItem(at: Self.modelDir(id))
             states[id] = .absent
         }
         tasks.removeAll()
@@ -84,7 +118,7 @@ public final class TranscriptionService: ObservableObject {
 
     private func runDownload(_ variant: String) async {
         let expected = Int64(TranscriptionCatalog.spec(for: variant)?.sizeMB ?? 1) * 1_000_000
-        let dir = ModelPaths.whisperModelDir(variant)
+        let dir = Self.modelDir(variant)
         let poll = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 500_000_000)
@@ -97,7 +131,11 @@ public final class TranscriptionService: ObservableObject {
         }
         defer { poll.cancel() }
         do {
-            _ = try await WhisperKit.download(variant: variant, downloadBase: ModelPaths.whisperDownloadBase, progressCallback: { _ in })
+            if TranscriptionCatalog.engine(for: variant) == .gigaAM {
+                try await Self.downloadGigaFiles(to: dir)
+            } else {
+                _ = try await WhisperKit.download(variant: variant, downloadBase: ModelPaths.whisperDownloadBase, progressCallback: { _ in })
+            }
             if Task.isCancelled { return }
             states[variant] = isDownloaded(variant) ? .ready : .failed("incomplete")
         } catch {
@@ -106,11 +144,28 @@ public final class TranscriptionService: ObservableObject {
         }
     }
 
+    /// Plain sequential HuggingFace file downloads (encoder/decoder/joiner/tokens);
+    /// progress comes from the generic dirSize poll like every other model.
+    private nonisolated static func downloadGigaFiles(to dir: URL) async throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for name in GigaAMFiles.names {
+            let dest = dir.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: dest.path) { continue }
+            try Task.checkCancellation()
+            let (tmp, resp) = try await URLSession.shared.download(from: GigaAMFiles.url(name))
+            if let http = resp as? HTTPURLResponse, !(200 ..< 300).contains(http.statusCode) {
+                throw URLError(.badServerResponse)
+            }
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.moveItem(at: tmp, to: dest)
+        }
+    }
+
     public func delete(_ variant: String) {
         cancelDownload(variant)
-        try? FileManager.default.removeItem(at: ModelPaths.whisperModelDir(variant))
+        try? FileManager.default.removeItem(at: Self.modelDir(variant))
         states[variant] = .absent
-        if loadedModel == variant { kit = nil; loadedModel = nil; status = .idle }
+        if loadedModel == variant { kit = nil; giga = nil; loadedModel = nil; status = .idle }
     }
 
     /// Auto-unload after `seconds` of idle; any new load/transcription cancels it.
@@ -124,15 +179,20 @@ public final class TranscriptionService: ObservableObject {
         }
     }
 
-    /// Loads (downloading on first use) the given WhisperKit model.
+    /// Loads (downloading on first use) the given catalog model on its engine.
     public func ensureLoaded(model: String) async {
         idleUnloadTask?.cancel()
-        if loadedModel == model, kit != nil { return }
+        if loadedModel == model, isReady { return }
         status = .loading
+        if TranscriptionCatalog.engine(for: model) == .gigaAM {
+            await ensureGigaLoaded(model: model)
+            return
+        }
         do {
             let config = WhisperKitConfig(model: model, downloadBase: ModelPaths.whisperDownloadBase)
             let kit = try await WhisperKit(config)
             self.kit = kit
+            giga = nil
             loadedModel = model
             states[model] = .ready
             status = .ready
@@ -140,6 +200,47 @@ public final class TranscriptionService: ObservableObject {
             kit = nil
             loadedModel = nil
             status = .error(error.localizedDescription)
+        }
+    }
+
+    /// Builds the sherpa-onnx recognizer off the main thread (reads ~230 MB of ONNX
+    /// and builds CPU sessions). Downloads the files first when missing.
+    private func ensureGigaLoaded(model: String) async {
+        if !isDownloaded(model) {
+            do {
+                try await Self.downloadGigaFiles(to: Self.modelDir(model))
+            } catch {
+                status = .error(error.localizedDescription)
+                return
+            }
+        }
+        let dir = Self.modelDir(model)
+        let box = await Task.detached(priority: .userInitiated) { () -> GigaBox? in
+            var config = sherpaOnnxOfflineRecognizerConfig(
+                featConfig: sherpaOnnxFeatureConfig(sampleRate: 16000, featureDim: 64),
+                modelConfig: sherpaOnnxOfflineModelConfig(
+                    tokens: dir.appendingPathComponent("tokens.txt").path,
+                    transducer: sherpaOnnxOfflineTransducerModelConfig(
+                        encoder: dir.appendingPathComponent("encoder.int8.onnx").path,
+                        decoder: dir.appendingPathComponent("decoder.onnx").path,
+                        joiner: dir.appendingPathComponent("joiner.onnx").path
+                    ),
+                    numThreads: 4,
+                    modelType: "nemo_transducer"
+                )
+            )
+            return GigaBox(rec: SherpaOnnxOfflineRecognizer(config: &config))
+        }.value
+        if let box {
+            giga = box
+            kit = nil
+            loadedModel = model
+            states[model] = .ready
+            status = .ready
+        } else {
+            giga = nil
+            loadedModel = nil
+            status = .error("gigaam load failed")
         }
     }
 
@@ -151,6 +252,7 @@ public final class TranscriptionService: ObservableObject {
         idleUnloadTask?.cancel()
         idleUnloadTask = nil
         kit = nil
+        giga = nil
         loadedModel = nil
         status = .idle
     }
@@ -163,7 +265,9 @@ public final class TranscriptionService: ObservableObject {
     /// silence instead. The FINAL pass (long audio) uses `strict: true`.
     public func transcribeSamples(_ samples: [Float], meetingId: String, language: String?, strict: Bool = false) async -> [TranscriptSegment] {
         idleUnloadTask?.cancel()
-        guard let kit, !samples.isEmpty else { return [] }
+        guard !samples.isEmpty else { return [] }
+        if let giga { return await Self.transcribeGiga(giga, samples: samples, meetingId: meetingId) }
+        guard let kit else { return [] }
         do {
             let results = try await kit.transcribe(audioArray: samples, decodeOptions: Self.decodeOptions(language: language, strict: strict))
             let segs = results.flatMap(\.segments).compactMap { s -> TranscriptSegment? in
@@ -194,6 +298,87 @@ public final class TranscriptionService: ObservableObject {
         }
         if let language { o.language = language }
         return o
+    }
+
+    /// Reads an audio file into 16 kHz mono Float samples (GigaAM file path — the
+    /// sherpa-onnx recognizer takes raw samples, not file URLs).
+    private nonisolated static func loadSamples16k(_ url: URL) -> [Float] {
+        guard let file = try? AVAudioFile(forReading: url),
+              let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: file.processingFormat, to: target) else { return [] }
+        var out: [Float] = []
+        let inCap: AVAudioFrameCount = 48000
+        while true {
+            guard let inBuf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: inCap),
+                  (try? file.read(into: inBuf)) != nil, inBuf.frameLength > 0 else { break }
+            let ratio = 16000.0 / file.processingFormat.sampleRate
+            let cap = AVAudioFrameCount(Double(inBuf.frameLength) * ratio + 32)
+            guard let outBuf = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: cap) else { break }
+            var fed = false
+            var err: NSError?
+            converter.convert(to: outBuf, error: &err) { _, status in
+                if fed { status.pointee = .noDataNow; return nil }
+                fed = true; status.pointee = .haveData; return inBuf
+            }
+            guard err == nil, let ch = outBuf.floatChannelData?[0] else { break }
+            out.append(contentsOf: UnsafeBufferPointer(start: ch, count: Int(outBuf.frameLength)))
+        }
+        return out
+    }
+
+    /// GigaAM decode off the main thread: split into ≤28s chunks at the quietest
+    /// point (the model is built for ≤~30s segments), decode sequentially, one
+    /// segment per chunk with absolute timecodes. Same downstream filters as Whisper.
+    private nonisolated static func transcribeGiga(_ box: GigaBox, samples: [Float], meetingId: String) async -> [TranscriptSegment] {
+        await Task.detached(priority: .userInitiated) {
+            var segs: [TranscriptSegment] = []
+            for chunk in Self.gigaChunks(samples) {
+                let text = Self.cleanText(box.decode(chunk.samples))
+                guard Self.hasSpeech(text), !Self.isHallucination(text) else { continue }
+                segs.append(TranscriptSegment(
+                    meetingId: meetingId, text: text,
+                    startSeconds: Double(chunk.offset) / 16000.0,
+                    endSeconds: Double(chunk.offset + chunk.samples.count) / 16000.0
+                ))
+            }
+            return Self.collapseRepeats(segs)
+        }.value
+    }
+
+    /// Splits 16 kHz audio into chunks of at most `maxSeconds`, cutting at the
+    /// quietest 0.3s window near the `targetSeconds` mark so words aren't sliced.
+    nonisolated static func gigaChunks(_ samples: [Float], maxSeconds: Double = 28,
+                                       targetSeconds: Double = 25) -> [(offset: Int, samples: [Float])] {
+        let sr = 16000
+        let maxLen = Int(maxSeconds * Double(sr))
+        guard samples.count > maxLen else { return samples.isEmpty ? [] : [(0, samples)] }
+        var chunks: [(Int, [Float])] = []
+        var from = 0
+        while samples.count - from > maxLen {
+            let searchLo = from + Int((targetSeconds - 3) * Double(sr))
+            let searchHi = min(from + Int((targetSeconds + 3) * Double(sr)), samples.count - sr)
+            let cut = quietestCut(samples, lo: searchLo, hi: searchHi)
+            chunks.append((from, Array(samples[from ..< cut])))
+            from = cut
+        }
+        chunks.append((from, Array(samples[from...])))
+        return chunks
+    }
+
+    /// Start of the quietest 0.3s window in [lo, hi) (energy = Σ|x| over the window).
+    private nonisolated static func quietestCut(_ samples: [Float], lo: Int, hi: Int) -> Int {
+        let win = 4800, step = 800
+        var best = lo, bestEnergy = Float.greatestFiniteMagnitude
+        var i = lo
+        while i + win <= hi {
+            var e: Float = 0
+            for j in i ..< (i + win) {
+                e += abs(samples[j])
+            }
+            if e < bestEnergy { bestEnergy = e; best = i }
+            i += step
+        }
+        return best + win / 2
     }
 
     /// True when the cleaned text carries real speech (≥ one letter/digit). Filters
@@ -265,6 +450,10 @@ public final class TranscriptionService: ObservableObject {
     /// would reject it too.
     public func transcribe(url: URL, meetingId: String, language: String?, strict: Bool = false) async -> [TranscriptSegment] {
         idleUnloadTask?.cancel()
+        if let giga {
+            let samples = Self.loadSamples16k(url)
+            return await Self.transcribeGiga(giga, samples: samples, meetingId: meetingId)
+        }
         guard let kit else { return [] }
         status = .transcribing
         do {

@@ -25,6 +25,7 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode-beta.app/Contents/Dev
 
 # 1) Generate + Release build
 tuist install --path "$ROOT" >/dev/null
+"$ROOT/scripts/patch-sherpa-onnx.sh"
 tuist generate --path "$ROOT" --no-open >/dev/null
 xcodebuild -workspace "$ROOT/Ember.xcworkspace" -scheme Ember -configuration Release \
   -derivedDataPath "$DERIVED" build >/dev/null

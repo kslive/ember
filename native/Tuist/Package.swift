@@ -49,5 +49,6 @@ let package = Package(
         .package(url: "https://github.com/ml-explore/mlx-swift-examples", from: "2.25.5"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
         .package(url: "https://github.com/FluidInference/FluidAudio", from: "0.15.4"),
+        .package(url: "https://github.com/willwade/sherpa-onnx-spm", from: "1.13.14"),
     ]
 )

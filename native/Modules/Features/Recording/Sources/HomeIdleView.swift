@@ -6,17 +6,45 @@ import SwiftUI
 public struct HomeIdleView: View {
     @EnvironmentObject private var locale: LocaleManager
     private let isEmpty: Bool
+    /// Update pill next to the language chip ("Version X available" / progress /
+    /// "ready — restart"). Passed as plain data so this feature module doesn't
+    /// depend on UpdaterService.
+    private let updateBanner: String?
+    private let onUpdate: (() -> Void)?
     private let onStart: () -> Void
 
-    public init(isEmpty: Bool = false, onStart: @escaping () -> Void) {
+    public init(isEmpty: Bool = false, updateBanner: String? = nil,
+                onUpdate: (() -> Void)? = nil, onStart: @escaping () -> Void) {
         self.isEmpty = isEmpty
+        self.updateBanner = updateBanner
+        self.onUpdate = onUpdate
         self.onStart = onStart
     }
 
     public var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 Spacer()
+                if let updateBanner {
+                    Button {
+                        onUpdate?()
+                    } label: {
+                        HStack(spacing: 7) {
+                            EmberIcon(.download, size: 13, lineWidth: 1.8, color: EmberColor.accentText)
+                            Text(updateBanner)
+                                .font(EmberType.medium(12.5))
+                                .foregroundStyle(EmberColor.accentText)
+                        }
+                        .padding(.horizontal, 13)
+                        .frame(height: 34)
+                        .background(EmberColor.accentWeak)
+                        .clipShape(RoundedRectangle(cornerRadius: 9))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(EmberPressStyle())
+                    .hoverCursor()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 LanguageChip()
             }
             .frame(height: 60)

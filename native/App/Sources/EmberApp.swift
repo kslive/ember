@@ -56,6 +56,7 @@ struct EmberApp: App {
             .environmentObject(settings)
             .environmentObject(updater)
             .preferredColorScheme(theme.theme.colorScheme)
+            .id(theme.accentId)
             .frame(minWidth: 920, minHeight: 600)
             .task { if onboarded { updater.checkInBackground() } }
         }

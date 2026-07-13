@@ -1,4 +1,5 @@
 import AppKit
+import Core
 import SwiftUI
 
 public extension Color {
@@ -60,9 +61,18 @@ public enum EmberColor {
     public static let text = dynamicColor(dark: ns("F5F5F4"), light: ns("1C1B1A"))
     public static let text2 = dynamicColor(dark: ns("A1A1A0"), light: ns("605D58"))
     public static let text3 = dynamicColor(dark: ns("6B6B6A"), light: ns("908D88"))
-    public static let accent = Color(hex: "F97316")
-    public static let accentText = dynamicColor(dark: ns("FB923C"), light: ns("C2410C"))
-    public static let accentWeak = dynamicColor(dark: ns("F97316", 0.13), light: ns("F97316", 0.10))
+    public static var accent: Color {
+        Color(hex: AccentPreset.current.base)
+    }
+
+    public static var accentText: Color {
+        dynamicColor(dark: ns(AccentPreset.current.textDark), light: ns(AccentPreset.current.textLight))
+    }
+
+    public static var accentWeak: Color {
+        dynamicColor(dark: ns(AccentPreset.current.base, 0.13), light: ns(AccentPreset.current.base, 0.10))
+    }
+
     public static let border = dynamicColor(dark: NSColor(white: 1, alpha: 0.07), light: NSColor(white: 0, alpha: 0.07))
     public static let borderStrong = dynamicColor(dark: NSColor(white: 1, alpha: 0.13), light: NSColor(white: 0, alpha: 0.14))
     public static let rec = dynamicColor(dark: ns("EF4444"), light: ns("DC2626"))

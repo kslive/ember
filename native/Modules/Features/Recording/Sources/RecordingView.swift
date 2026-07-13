@@ -134,12 +134,12 @@ private struct RowPrefix: View {
         Group {
             if let lbl = SpeakerLabel.tag(source: seg.source, speaker: seg.speaker,
                                           meShort: meShort, themShort: themShort) {
-                Text(lbl).font(EmberType.mono(11)).foregroundStyle(EmberColor.accentText)
+                Text(lbl).font(EmberType.mono(11)).foregroundStyle(EmberColor.accentText).fixedSize()
             } else {
                 Color.clear
             }
         }
-        .frame(width: 34, alignment: .leading)
+        .frame(width: 27, alignment: .leading)
         .padding(.top, 2)
     }
 }
@@ -152,7 +152,7 @@ private struct SegmentRow: View {
     let themShort: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 6) {
             RowPrefix(seg: seg, meShort: meShort, themShort: themShort)
             Text(seg.text).font(EmberType.regular(15)).lineSpacing(9).foregroundStyle(EmberColor.text)
             Spacer(minLength: 0)
@@ -175,7 +175,7 @@ private struct LiveTypewriterRow: View {
     private let revealTimer = Timer.publish(every: 0.03, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 6) {
             RowPrefix(seg: seg, meShort: meShort, themShort: themShort)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(String(seg.text.prefix(shownChars)))

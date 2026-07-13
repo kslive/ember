@@ -69,9 +69,24 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(TranscriptionCatalog.defaultId, "openai_whisper-large-v3_turbo")
         XCTAssertNotNil(TranscriptionCatalog.spec(for: TranscriptionCatalog.defaultId))
         for m in TranscriptionCatalog.all {
-            XCTAssertTrue(m.id.hasPrefix("openai_whisper-"))
+            switch m.engine {
+            case .whisperKit: XCTAssertTrue(m.id.hasPrefix("openai_whisper-"))
+            case .gigaAM: XCTAssertTrue(m.id.hasPrefix("gigaam-"))
+            }
             XCTAssertGreaterThan(m.sizeMB, 0)
         }
+        XCTAssertEqual(TranscriptionCatalog.all.filter { $0.engine == .gigaAM }.count, 1)
+    }
+
+    func testAccentPresets() {
+        XCTAssertEqual(AccentPreset.all.count, 6)
+        XCTAssertEqual(Set(AccentPreset.all.map(\.id)).count, AccentPreset.all.count)
+        XCTAssertEqual(AccentPreset.all.first?.id, "ember")
+        XCTAssertEqual(AccentPreset.preset(id: "blue").base, "3B82F6")
+        XCTAssertEqual(AccentPreset.preset(id: "nonsense").id, "ember")
+        XCTAssertEqual(AccentPreset.ember.base, "F97316")
+        XCTAssertEqual(AccentPreset.ember.textDark, "FB923C")
+        XCTAssertEqual(AccentPreset.ember.textLight, "C2410C")
     }
 
     func testModelPaths() {

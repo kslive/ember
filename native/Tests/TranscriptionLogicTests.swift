@@ -92,6 +92,45 @@ final class TranscriptionLogicTests: XCTestCase {
         XCTAssertEqual(TranscriptionService.collapseRepeats([seg("одно", 0, 1)]).count, 1)
     }
 
+    func testCatalogEngineMapping() {
+        XCTAssertEqual(TranscriptionCatalog.engine(for: "gigaam-v3-rnnt"), .gigaAM)
+        XCTAssertEqual(TranscriptionCatalog.engine(for: "openai_whisper-large-v3_turbo"), .whisperKit)
+        XCTAssertEqual(TranscriptionCatalog.engine(for: "unknown-id"), .whisperKit)
+        XCTAssertEqual(GigaAMFiles.names.count, 4)
+    }
+
+    func testGigaChunksShortAudioSingleChunk() {
+        let short = [Float](repeating: 0.1, count: 16000 * 10)
+        let chunks = TranscriptionService.gigaChunks(short)
+        XCTAssertEqual(chunks.count, 1)
+        XCTAssertEqual(chunks[0].offset, 0)
+        XCTAssertEqual(chunks[0].samples.count, short.count)
+        XCTAssertTrue(TranscriptionService.gigaChunks([]).isEmpty)
+    }
+
+    func testGigaChunksLongAudioSplitsAtQuietPoint() {
+        var audio = [Float](repeating: 0.3, count: 16000 * 60)
+        let silentAt = 16000 * 24
+        for i in silentAt ..< (silentAt + 16000) {
+            audio[i] = 0.0005
+        }
+        let chunks = TranscriptionService.gigaChunks(audio)
+        XCTAssertGreaterThan(chunks.count, 1)
+        for c in chunks {
+            XCTAssertLessThanOrEqual(c.samples.count, 16000 * 28)
+        }
+        var expected = 0
+        var total = 0
+        for c in chunks {
+            XCTAssertEqual(c.offset, expected)
+            expected += c.samples.count
+            total += c.samples.count
+        }
+        XCTAssertEqual(total, audio.count)
+        let cut = chunks[0].samples.count
+        XCTAssertTrue(cut >= silentAt && cut <= silentAt + 16000, "cut \(cut) should land in the silent second")
+    }
+
     func testHasSpeechFiltersPunctuationOnly() {
         XCTAssertFalse(TranscriptionService.hasSpeech("-"))
         XCTAssertFalse(TranscriptionService.hasSpeech("—"))

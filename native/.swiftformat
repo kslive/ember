@@ -7,4 +7,4 @@
 # SwiftFormat's wrapMultilineStatementBraces puts `{` on its own line for wrapped
 # declarations, which conflicts with SwiftLint's default `opening_brace` (same line).
 --disable wrapMultilineStatementBraces
---exclude Tuist,Derived,.build,**/Generated
+--exclude Tuist,Derived,.build,**/Generated,**/Vendor

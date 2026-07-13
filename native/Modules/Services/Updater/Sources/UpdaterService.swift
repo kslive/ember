@@ -12,7 +12,15 @@ import UserNotifications
 /// Ad-hoc friendly (quarantine is stripped → no Gatekeeper block on relaunch).
 @MainActor
 public final class UpdaterService: ObservableObject {
+    /// "What's new" announcement payload: the GitHub release body of the version the
+    /// user just updated INTO. Shown once per version, then dismissed for good.
+    public struct WhatsNew: Equatable {
+        public let version: String
+        public let body: String
+    }
+
     @Published public private(set) var phase: UpdaterPhase = .idle
+    @Published public private(set) var whatsNew: WhatsNew?
     @Published public var autoUpdate: Bool {
         didSet { UserDefaults.standard.set(autoUpdate, forKey: Keys.autoUpdate) }
     }
@@ -21,7 +29,10 @@ public final class UpdaterService: ObservableObject {
     private var task: Task<Void, Never>?
     private var stagedApp: URL?
     private var bgTimer: Timer?
-    private let backgroundInterval: TimeInterval = 6 * 3600
+    /// Background-check throttle AND timer period. 30 min (was 6h): one anonymous
+    /// GitHub request per half-hour is nothing rate-limit-wise, and the old 6h window
+    /// meant the Home update pill stayed hidden for hours after a release.
+    private let backgroundInterval: TimeInterval = 30 * 60
 
     public init() {
         autoUpdate = (UserDefaults.standard.object(forKey: Keys.autoUpdate) as? Bool) ?? true
@@ -35,9 +46,45 @@ public final class UpdaterService: ObservableObject {
                                                object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkInBackground() }
         }
-        bgTimer = Timer.scheduledTimer(withTimeInterval: backgroundInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: backgroundInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkInBackground() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        bgTimer = timer
+        // Cold launch: ALWAYS check (past the throttle) — a fresh launch must surface
+        // an available update on the Home banner right away; the throttle previously
+        // hid it until the next background window.
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            await MainActor.run { self?.check(silent: true) }
+        }
+        Task { [weak self] in await self?.maybeLoadWhatsNew() }
+    }
+
+    /// Loads the "What's new" announcement once per version. A FRESH install (not yet
+    /// onboarded) never announces its own starting version — only real updates do.
+    /// Offline → not marked, so it shows on the next online launch instead.
+    private func maybeLoadWhatsNew() async {
+        guard UserDefaults.standard.bool(forKey: "ember.onboarded") else {
+            UserDefaults.standard.set(currentVersion, forKey: Keys.lastAnnounced)
+            return
+        }
+        guard UserDefaults.standard.string(forKey: Keys.lastAnnounced) != currentVersion else { return }
+        do {
+            guard let body = try await engine.notes(forVersion: currentVersion),
+                  !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                UserDefaults.standard.set(currentVersion, forKey: Keys.lastAnnounced)
+                return
+            }
+            whatsNew = WhatsNew(version: currentVersion, body: body)
+        } catch {
+            // network hiccup — retry silently on a future launch
+        }
+    }
+
+    public func dismissWhatsNew() {
+        UserDefaults.standard.set(currentVersion, forKey: Keys.lastAnnounced)
+        whatsNew = nil
     }
 
     public var currentVersion: String {
@@ -48,8 +95,8 @@ public final class UpdaterService: ObservableObject {
         UserDefaults.standard.object(forKey: Keys.lastCheck) as? Date
     }
 
-    /// Background check (launch/focus/timer) — throttled to once per 6h; in auto mode
-    /// it downloads + stages silently → `.readyToInstall`.
+    /// Background check (focus/timer) — throttled to once per `backgroundInterval`;
+    /// in auto mode it downloads + stages silently → `.readyToInstall`.
     public func checkInBackground() {
         guard UpdateLogic.shouldCheck(last: lastCheck, interval: backgroundInterval, now: Date()) else { return }
         check(silent: true)
@@ -207,5 +254,6 @@ public final class UpdaterService: ObservableObject {
         static let lastCheck = "ember.update.lastCheck"
         static let pendingVersion = "ember.update.pending.version"
         static let pendingPath = "ember.update.pending.path"
+        static let lastAnnounced = "ember.update.lastAnnounced"
     }
 }

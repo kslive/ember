@@ -8,8 +8,8 @@ let baseSettings: SettingsDictionary = [
     "DEVELOPMENT_TEAM": "",
     "ENABLE_HARDENED_RUNTIME": "YES",
     "SWIFT_VERSION": "5.0",
-    "MARKETING_VERSION": "1.5.0",
-    "CURRENT_PROJECT_VERSION": "10",
+    "MARKETING_VERSION": "1.5.1",
+    "CURRENT_PROJECT_VERSION": "11",
     "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
 ]
 
@@ -46,7 +46,7 @@ let designSystem = mod("DesignSystem", path: "Modules/Core/DesignSystem", deps: 
 let audioService = mod("AudioService", path: "Modules/Services/Audio", deps: [.target(name: "Core")])
 let callDetectService = mod("CallDetectService", path: "Modules/Services/CallDetect", deps: [.target(name: "Core")])
 let transcriptionService = mod("TranscriptionService", path: "Modules/Services/Transcription", deps: [
-    .target(name: "Core"), .external(name: "WhisperKit"),
+    .target(name: "Core"), .external(name: "WhisperKit"), .external(name: "SherpaOnnx"),
 ])
 let summaryService = mod("SummaryService", path: "Modules/Services/Summary", deps: [
     .target(name: "Core"), .external(name: "MLXLLM"), .external(name: "MLXLMCommon"),

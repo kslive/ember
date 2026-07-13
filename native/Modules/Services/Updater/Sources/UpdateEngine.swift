@@ -22,6 +22,21 @@ actor UpdateEngine {
         return UpdateLogic.pickUpdate(from: releases, current: current, channel: channel)
     }
 
+    /// Release-notes body for ONE version tag (the "What's new" announcement shown
+    /// once after an update). nil when the tag has no published release.
+    func notes(forVersion version: String) async throws -> String? {
+        guard let url = URL(string: "https://api.github.com/repos/\(Self.repo)/releases/tags/v\(version)") else { return nil }
+        var req = URLRequest(url: url)
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("Ember-Updater", forHTTPHeaderField: "User-Agent")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw UpdateError.badResponse }
+        if http.statusCode == 404 { return nil }
+        guard (200 ..< 300).contains(http.statusCode) else { throw UpdateError.badResponse }
+        struct TagRelease: Decodable { let body: String? }
+        return try JSONDecoder().decode(TagRelease.self, from: data).body
+    }
+
     nonisolated func downloadAndVerify(_ release: UpdateRelease) -> AsyncThrowingStream<UpdateDownloadEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {

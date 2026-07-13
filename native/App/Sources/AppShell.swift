@@ -6,9 +6,11 @@ import MeetingsFeature
 import RecordingFeature
 import SettingsFeature
 import SwiftUI
+import UpdaterService
 
 struct AppShell: View {
     @EnvironmentObject private var locale: LocaleManager
+    @EnvironmentObject private var updater: UpdaterService
     @ObservedObject var model: AppModel
     @AppStorage("ember.sidebarWidth") private var sidebarWidth: Double = 266
     @State private var dragStartWidth: Double?
@@ -40,6 +42,14 @@ struct AppShell: View {
             dialogs
                 .animation(.easeInOut(duration: 0.18), value: model.renaming)
                 .animation(.easeInOut(duration: 0.18), value: model.deleting)
+        }
+        .overlay {
+            if let wn = updater.whatsNew {
+                WhatsNewOverlay(version: wn.version,
+                                markdown: ReleaseNotes.localizedSection(wn.body, language: locale.language),
+                                onClose: { updater.dismissWhatsNew() })
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
         }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
@@ -104,6 +114,25 @@ struct AppShell: View {
         return ev
     }
 
+    /// Update pill on the Home header (next to the language chip). nil = hidden.
+    private var updateBannerText: String? {
+        switch updater.phase {
+        case let .available(r): locale.t("update.available", ["v": r.version])
+        case let .downloading(p): locale.t("update.downloading", ["p": String(Int(p * 100))])
+        case .installing: locale.t("update.downloading", ["p": "100"])
+        case let .readyToInstall(r): locale.t("update.readyToInstall", ["v": r.version])
+        default: nil
+        }
+    }
+
+    private func updateBannerTapped() {
+        switch updater.phase {
+        case .available: updater.update()
+        case .readyToInstall: updater.restart()
+        default: break
+        }
+    }
+
     @ViewBuilder private var dialogs: some View {
         if let m = model.renaming {
             RenameDialog(initial: m.title, title: locale.t("dialog.rename.title"),
@@ -124,7 +153,10 @@ struct AppShell: View {
             if model.isRecordingActive {
                 RecordingView(engine: model.engine, segments: model.liveSegments, onStop: { model.stopRecording(language: locale.language) })
             } else {
-                HomeIdleView(isEmpty: model.store.meetings.isEmpty, onStart: { model.startRecording() })
+                HomeIdleView(isEmpty: model.store.meetings.isEmpty,
+                             updateBanner: updateBannerText,
+                             onUpdate: { updateBannerTapped() },
+                             onStart: { model.startRecording() })
             }
         case .meetings:
             if let id = model.selectedMeetingId, let meeting = model.meeting(id) {
@@ -160,6 +192,7 @@ private struct MeetingDetailContainer: View {
             segments: segments,
             summary: summary,
             isProcessing: model.isProcessing(meeting.id),
+            progress: model.processingStages[meeting.id],
             summaryService: model.summary,
             onRegenerate: { model.regenerate(meetingId: meeting.id) },
             onRename: { model.rename(meeting.id, to: $0) }

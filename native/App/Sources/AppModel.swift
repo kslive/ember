@@ -37,9 +37,13 @@ final class AppModel: ObservableObject {
     @Published var toast: ToastInfo?
     private var toastTask: Task<Void, Never>?
     @Published private(set) var processingIds: Set<String> = []
+    @Published private(set) var processingStages: [String: ProcessingProgress] = [:]
     @Published private(set) var revision = 0
 
     private var recordingId: String?
+    /// When the current recording STARTED — the meeting's createdAt. Stamping Date()
+    /// at stop labeled every meeting with its END time (sidebar + Obsidian export).
+    private var recordingStartedAt: Date?
     private var isStarting = false
     private var isSummarizing = false
     private var liveTask: Task<Void, Never>?
@@ -141,6 +145,7 @@ final class AppModel: ObservableObject {
                 return
             }
             autoStarted = auto
+            recordingStartedAt = Date()
             startLiveLoop(id)
             notify("Recording started", "Запись началась", "开始录音")
             if SettingsStore.notifyOnStartOn() { showToast(tr("toast.recReminder"), tone: .warn) } else { showToast(tr("toast.recStarted"), tone: .info) }
@@ -276,6 +281,7 @@ final class AppModel: ObservableObject {
             if let system { try? FileManager.default.removeItem(at: system) }
             engine.reset()
             recordingId = nil
+            recordingStartedAt = nil
             autoStarted = false
             showToast(tr("toast.autoDiscarded"), tone: .info)
             return
@@ -283,10 +289,12 @@ final class AppModel: ObservableObject {
         let micSamples = engine.liveSamples()
         let systemSamples = engine.systemSamples()
         let id = recordingId ?? UUID().uuidString
-        let meeting = Meeting(id: id, title: defaultTitle(language), createdAt: Date(), durationSeconds: engine.elapsed)
+        let meeting = Meeting(id: id, title: defaultTitle(language),
+                              createdAt: recordingStartedAt ?? Date(), durationSeconds: engine.elapsed)
         store.upsert(meeting)
         engine.reset()
         recordingId = nil
+        recordingStartedAt = nil
         autoStarted = false
         route = .home
         guard mic != nil || system != nil else { return }
@@ -302,9 +310,19 @@ final class AppModel: ObservableObject {
 
     private func process(meetingId id: String, liveFinal: [TranscriptSegment], micSamples: [Float],
                          systemSamples: [Float], mic: URL?, system: URL?) async {
-        defer { processingIds.remove(id); revision += 1 }
+        defer { processingIds.remove(id); processingStages.removeValue(forKey: id); revision += 1 }
         let lang = whisperLang()
         let sysGated = !systemSamples.isEmpty && AudioLevel.peak(systemSamples) >= Self.silencePeak
+        let plan = ProcessingStage.plan(
+            diarize: SettingsStore.diarizationOn() && sysGated,
+            summarize: SettingsStore.autoSummaryOn()
+                && SummaryCatalog.spec(for: SettingsStore.currentSummaryModelId())?.repoId != nil
+        )
+        func enterStage(_ stage: ProcessingStage) {
+            guard let i = plan.firstIndex(of: stage) else { return }
+            processingStages[id] = ProcessingProgress(stage: stage, step: i + 1, total: plan.count)
+        }
+        enterStage(.transcribe)
 
         // 1. Instant: persist the full live transcript right away (no blank wait).
         var segs = liveFinal.filter { TranscriptionService.hasSpeech($0.text) }
@@ -342,6 +360,7 @@ final class AppModel: ObservableObject {
         // Offline speaker diarization of the SYSTEM channel → number distinct voices
         // ("Собеседник 1/2/3"). Best-effort: on any failure segments keep speaker 0.
         if SettingsStore.diarizationOn(), sysGated {
+            enterStage(.diarize)
             let turns = await diarization.diarize(systemSamples)
             if !turns.isEmpty { segs = DiarizationMap.assign(segs, turns: turns) }
         }
@@ -352,6 +371,7 @@ final class AppModel: ObservableObject {
         let text = speakerTranscript(segs)
         if !text.isEmpty, SettingsStore.autoSummaryOn(),
            let repo = SummaryCatalog.spec(for: SettingsStore.currentSummaryModelId())?.repoId {
+            enterStage(.summarize)
             if await makeSummary(meetingId: id, text: text, repo: repo) {
                 notify("Summary ready", "Саммари готово", "摘要已就绪")
                 showToast(tr("toast.summaryReady"), tone: .good)
@@ -485,11 +505,13 @@ final class AppModel: ObservableObject {
         let text = speakerTranscript(store.transcript(meetingId: id))
         guard !text.isEmpty, let repo = SummaryCatalog.spec(for: SettingsStore.currentSummaryModelId())?.repoId else { return }
         processingIds.insert(id)
+        processingStages[id] = ProcessingProgress(stage: .summarize, step: 1, total: 1)
         Task {
             if await makeSummary(meetingId: id, text: text, repo: repo) {
                 showToast(tr("toast.summaryReady"), tone: .good)
             }
             processingIds.remove(id)
+            processingStages.removeValue(forKey: id)
             revision += 1
         }
     }
