@@ -8,8 +8,9 @@
 
 **Local meeting recorder, transcriber and summarizer for macOS.**
 
-Records your microphone and the other side of a call, writes a live transcript,
-and produces a short summary — entirely on your Mac. Nothing is uploaded.
+Records your microphone and the other side of a call, writes a live transcript
+with speaker labels, and produces a detailed summary — on your Mac. By default
+nothing is uploaded.
 
 ![macOS](https://img.shields.io/badge/macOS-14.4%2B-000?style=flat-square&logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000?style=flat-square)
@@ -24,19 +25,27 @@ and produces a short summary — entirely on your Mac. Nothing is uploaded.
 
 ## What it does
 
-Ember records a meeting (microphone + system audio), transcribes it on-device with
-Whisper, and generates a structured summary — overview, decisions, action items — with a
-local language model. It works offline; there is no account and no cloud.
+Ember records a meeting (microphone + system audio), transcribes it on-device and
+writes a narrative summary you can read instead of attending: topic sections with the
+details, names and decisions woven in, plus next steps. It works offline by default;
+there is no account. The only optional cloud piece is DeepSeek summaries — off until
+you add a key.
 
 ## Features
 
-- **Live transcript** while recording, with per-source tags: `[mic]` (you) and `[mac]` (the other side).
-- **Automatic call detection** — recording starts when a call begins and stops when it ends, also while the window is in the background.
-- **Local summaries** via Apple MLX (Qwen3), in the language of the transcript.
+- **Live transcript** while recording, with speaker labels: you vs the other side — and
+  the other side's voices are told apart and numbered (Speaker 1 / Speaker 2).
+- **Automatic call detection** — recording starts a few seconds into a call (Zoom, browser
+  meetings, …) and stops when it ends, also while the window is in the background.
+- **Summaries in the language of the transcript**: local Apple MLX (Qwen3) by default, or
+  add an optional **DeepSeek API key** — near-instant cloud summaries with automatic
+  fallback to the local model.
+- **Two speech engines**: Whisper (multilingual) and **GigaAM v3** — 2–3× more accurate
+  for Russian.
 - **Search** across all meetings, rename, and Markdown / Obsidian export.
-- **Menu-bar control** and **⌘R** to start/stop.
-- Light / dark / auto theme; English, Russian and Chinese.
-- Built-in updates from GitHub Releases.
+- **Menu-bar control**, **⌘R** to start/stop, and visible processing stages after a call.
+- Light / dark / auto theme, six accent colors; English, Russian and Chinese.
+- Built-in updates from GitHub Releases, with an update banner and a "What's New" window.
 
 ## Export to Obsidian
 
@@ -77,9 +86,13 @@ Developer account is needed.
 - Recording, transcription and summarization run locally.
 - Audio is written to a temporary folder and deleted right after transcription; only the
   text (transcript + summary) is kept, in a local SQLite database on your Mac.
-- The only network access is downloading the models (Hugging Face) and checking for updates
-  (GitHub). No telemetry, no accounts.
+- Summaries are local by default. If you add a DeepSeek API key (optional), transcripts
+  are sent to DeepSeek for summarization; delete the key to go fully local again. The key
+  is stored encrypted on your Mac.
+- Beyond that, the only network access is downloading the models (Hugging Face) and
+  checking for updates (GitHub). No telemetry, no accounts.
 
 ## Built with
 
-SwiftUI · WhisperKit (CoreML/ANE) · Apple MLX (Qwen3) · GRDB (SQLite) · CoreAudio.
+SwiftUI · WhisperKit (CoreML/ANE) · GigaAM v3 (sherpa-onnx) · Apple MLX (Qwen3) ·
+FluidAudio (diarization) · GRDB (SQLite) · CoreAudio.

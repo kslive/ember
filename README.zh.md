@@ -8,8 +8,8 @@
 
 **macOS 上的本地会议录制、转写与摘要工具。**
 
-录制你的麦克风和对方的声音，实时生成转写，并产出简短摘要 —— 全部在你的 Mac 上完成，
-不上传任何内容。
+录制你的麦克风和对方的声音，实时生成带说话人标签的转写，并产出详尽摘要 —— 在你的
+Mac 上完成，默认不上传任何内容。
 
 ![macOS](https://img.shields.io/badge/macOS-14.4%2B-000?style=flat-square&logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000?style=flat-square)
@@ -24,18 +24,22 @@
 
 ## 这是什么
 
-Ember 录制会议（麦克风 + 系统音频），用 Whisper 在本机转写，再由本地语言模型生成
-结构化摘要 —— 概述、决定、行动项。完全离线，无需账号，不依赖云端。
+Ember 录制会议（麦克风 + 系统音频），在本机转写，并写出可以代替亲临会议阅读的叙事式
+摘要：按主题分节，细节、人名与决定融入正文，外加后续步骤。默认离线工作，无需账号；
+唯一可选的云端功能是 DeepSeek 摘要 —— 在你添加密钥之前始终关闭。
 
 ## 功能
 
-- **实时转写**，并标注来源：`[mic]`（你）与 `[mac]`（对方）。
-- **自动通话检测** —— 通话开始即录制，结束即停止，窗口最小化时也有效。
-- **本地摘要**，基于 Apple MLX（Qwen3），使用转写所用语言。
+- **实时转写**，带说话人标签：你与对方 —— 对方的不同声音会被区分并编号（对方 1 / 对方 2）。
+- **自动通话检测** —— 通话开始几秒后自动录制（Zoom、浏览器会议等），结束即停止，窗口
+  最小化时也有效。
+- **以转写语言生成摘要**：默认本地 Apple MLX（Qwen3），也可添加可选的 **DeepSeek API
+  密钥** —— 近乎即时的云端摘要，失败时自动回退到本地模型。
+- **两种语音引擎**：Whisper（多语言）与 **GigaAM v3** —— 俄语准确率高 2–3 倍。
 - **跨会议搜索**、重命名，以及 Markdown / Obsidian 导出。
-- **菜单栏控制** 与 **⌘R** 开始/停止。
-- 浅色 / 深色 / 自动主题；中文、英文、俄文。
-- 通过 GitHub Releases 内置更新。
+- **菜单栏控制**、**⌘R** 开始/停止，通话结束后可见处理阶段。
+- 浅色 / 深色 / 自动主题，六种强调色；中文、英文、俄文。
+- 通过 GitHub Releases 内置更新：主界面更新横幅与「新功能」窗口。
 
 ## 导出到 Obsidian
 
@@ -75,8 +79,11 @@ open Ember.xcworkspace          # 或：xcodebuild -scheme Ember -configuration 
 - 录制、转写和摘要均在本地完成。
 - 音频写入临时文件夹，转写后立即删除；只保留文本（转写 + 摘要），存于 Mac 上的本地
   SQLite 数据库。
-- 唯一的联网是下载模型（Hugging Face）和检查更新（GitHub）。无遥测、无账号。
+- 摘要默认在本地生成。若添加 DeepSeek API 密钥（可选），转写文本会发送给 DeepSeek
+  生成摘要；删除密钥即可回到完全本地。密钥以加密形式存储在你的 Mac 上。
+- 除此之外，唯一的联网是下载模型（Hugging Face）和检查更新（GitHub）。无遥测、无账号。
 
 ## 技术栈
 
-SwiftUI · WhisperKit（CoreML/ANE）· Apple MLX（Qwen3）· GRDB（SQLite）· CoreAudio。
+SwiftUI · WhisperKit（CoreML/ANE）· GigaAM v3（sherpa-onnx）· Apple MLX（Qwen3）·
+FluidAudio（说话人分离）· GRDB（SQLite）· CoreAudio。
