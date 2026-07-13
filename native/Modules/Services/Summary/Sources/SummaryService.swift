@@ -216,6 +216,23 @@ public final class SummaryService: ObservableObject {
         return SummarySanitize.clean(ThinkStripper.strip(raw), transcript: transcript)
     }
 
+    /// Cloud (DeepSeek) summary path — same prompts, no local models touched. Throws
+    /// on ANY failure so the caller falls back to the local MLX path. DeepSeek's 1M
+    /// context fits any meeting in one pass (400k-char cap is a safety net only).
+    public func summarizeCloud(key: String, model: String, transcript: String, languageCode: String) async throws -> String {
+        status = .generating
+        defer { if case .generating = status { status = container != nil ? .ready : .idle } }
+        let capped = String(transcript.suffix(400_000))
+        let raw = try await DeepSeekClient.chat(
+            key: key, model: model,
+            system: SummaryPrompts.system(language: languageCode),
+            user: SummaryPrompts.user(transcript: capped, language: languageCode)
+        )
+        let md = SummarySanitize.clean(ThinkStripper.strip(raw), transcript: transcript)
+        guard !md.isEmpty else { throw DeepSeekClient.ClientError.emptyResponse }
+        return md
+    }
+
     /// Prompt-token budget for ONE generation pass, capped at 12k for EVERY model.
     /// The uncapped budget (context − maxGen − headroom = up to ~33.6k tokens) let an
     /// 80-minute transcript run as a single pass: a multi-GB KV cache (prefill

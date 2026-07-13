@@ -15,6 +15,12 @@ public struct SettingsView: View {
     @ObservedObject private var summary: SummaryService
     @State private var tab: Tab = .general
     @State private var pendingDelete: PendingModelDelete?
+    @State private var deepseekDraft = ""
+    @State private var deepseekModels: [String] = []
+    @State private var deepseekChecking = false
+    @State private var deepseekError: String?
+    @State private var deepseekHasKey = false
+    @State private var deepseekListFailed = false
     @StateObject private var devices = AudioDevicesModel()
     @Namespace private var tabNS
     @Namespace private var segNS
@@ -229,6 +235,111 @@ public struct SettingsView: View {
                                                       isWhisper: false, id: m.id, repoId: m.repoId))
                     }
                 }
+            }
+            deepseekSection
+        }
+    }
+
+    /// Optional DeepSeek cloud path: key lives in the Keychain; the model is picked
+    /// from GET /models for THIS key (ids are never hardcoded — DeepSeek renames them).
+    /// Local models remain the always-available fallback.
+    @ViewBuilder private var deepseekSection: some View {
+        sectionTitle(locale.t("settings.deepseek.title"))
+        card {
+            VStack(alignment: .leading, spacing: 12) {
+                if deepseekHasKey {
+                    HStack(spacing: 10) {
+                        Text("••••••••")
+                            .font(EmberType.mono(13)).foregroundStyle(EmberColor.text2)
+                        Text(locale.t("settings.deepseek.valid"))
+                            .font(EmberType.regular(12.5)).foregroundStyle(EmberColor.good)
+                        Spacer()
+                        EmberButton(locale.t("settings.deepseek.delete"), kind: .secondary, height: 30) {
+                            SettingsStore.deleteDeepseekKey()
+                            settings.deepseekModel = ""
+                            deepseekHasKey = false
+                            deepseekModels = []
+                            deepseekError = nil
+                            deepseekListFailed = false
+                        }
+                    }
+                    if !deepseekModels.isEmpty {
+                        HStack(spacing: 10) {
+                            Text(locale.t("settings.deepseek.model"))
+                                .font(EmberType.regular(13)).foregroundStyle(EmberColor.text2)
+                            Menu {
+                                ForEach(deepseekModels, id: \.self) { m in
+                                    Button(m) { settings.deepseekModel = m }
+                                }
+                            } label: {
+                                Text(settings.deepseekModel.isEmpty ? (deepseekModels.first ?? "—") : settings.deepseekModel)
+                                    .font(EmberType.mono(12.5)).foregroundStyle(EmberColor.text)
+                            }
+                            .menuStyle(.borderlessButton).fixedSize()
+                            .hoverCursor()
+                        }
+                    } else if deepseekListFailed {
+                        Text(locale.t("settings.deepseek.unavailable"))
+                            .font(EmberType.regular(12.5)).foregroundStyle(EmberColor.warn)
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        SecureField(locale.t("settings.deepseek.placeholder"), text: $deepseekDraft)
+                            .textFieldStyle(.plain)
+                            .font(EmberType.mono(13)).foregroundStyle(EmberColor.text)
+                            .padding(.horizontal, 12).frame(height: 36).frame(maxWidth: .infinity)
+                            .background(EmberColor.surface)
+                            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(EmberColor.borderStrong, lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 9))
+                        EmberButton(deepseekChecking ? locale.t("settings.deepseek.checking") : locale.t("settings.deepseek.save"),
+                                    kind: .primary, height: 36) {
+                            saveDeepseekKey()
+                        }
+                        .disabled(deepseekChecking || deepseekDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    if let err = deepseekError {
+                        Text(err).font(EmberType.regular(12.5)).foregroundStyle(EmberColor.rec)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                note(locale.t("settings.deepseek.desc"))
+            }
+        }
+        .onAppear { refreshDeepseek() }
+    }
+
+    /// Validates the key by fetching ITS model list; only a working key is stored.
+    private func saveDeepseekKey() {
+        let key = deepseekDraft.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty, !deepseekChecking else { return }
+        deepseekChecking = true
+        deepseekError = nil
+        Task { @MainActor in
+            defer { deepseekChecking = false }
+            do {
+                let models = try await DeepSeekClient.listModels(key: key)
+                SettingsStore.setDeepseekKey(key)
+                settings.deepseekModel = models.first ?? ""
+                deepseekModels = models
+                deepseekHasKey = true
+                deepseekDraft = ""
+                deepseekListFailed = false
+            } catch {
+                deepseekError = locale.t("settings.deepseek.invalid")
+            }
+        }
+    }
+
+    private func refreshDeepseek() {
+        deepseekHasKey = SettingsStore.deepseekKey() != nil
+        guard deepseekHasKey, let key = SettingsStore.deepseekKey() else { return }
+        Task { @MainActor in
+            do {
+                deepseekModels = try await DeepSeekClient.listModels(key: key)
+                deepseekListFailed = false
+            } catch {
+                deepseekModels = []
+                deepseekListFailed = true
             }
         }
     }

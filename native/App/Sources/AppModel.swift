@@ -372,6 +372,15 @@ final class AppModel: ObservableObject {
         isSummarizing = true
         defer { isSummarizing = false }
         let lang = whisperLang()
+
+        // Cloud path first (optional DeepSeek key): fast, no local RAM/GPU cost.
+        // ANY failure — no network, bad key, HTTP error, empty answer — falls through
+        // to the local model, so a summary is always produced.
+        if let cloudMd = await cloudSummary(text: text, lang: lang) {
+            persistSummary(meetingId: id, markdown: cloudMd)
+            return true
+        }
+
         transcription.unload()
         await Task.yield()
         try? await Task.sleep(nanoseconds: 200_000_000)
@@ -386,11 +395,32 @@ final class AppModel: ObservableObject {
             showToast(summaryErrorMessage(), tone: .error)
             return false
         }
+        persistSummary(meetingId: id, markdown: md)
+        return true
+    }
+
+    /// DeepSeek attempt. nil = no key configured or the cloud failed (logged + toast)
+    /// — the caller continues with the local model.
+    private func cloudSummary(text: String, lang: String) async -> String? {
+        guard let key = SettingsStore.deepseekKey() else { return nil }
+        do {
+            var model = SettingsStore.deepseekModelId()
+            if model == nil { model = try await DeepSeekClient.listModels(key: key).first }
+            guard let model else { return nil }
+            return try await summary.summarizeCloud(key: key, model: model, transcript: text, languageCode: lang)
+        } catch {
+            Self.log.error("deepseek failed → local fallback: \(String(describing: error), privacy: .public)")
+            showToast(tr("toast.deepseekFellBack"), tone: .warn)
+            return nil
+        }
+    }
+
+    /// Shared tail for both summary paths: save, AI-title rename, auto-export.
+    private func persistSummary(meetingId id: String, markdown md: String) {
         store.saveSummary(meetingId: id, summary: MeetingSummary(markdown: md))
         let topic = SummaryMarkdown.title(from: md)
         if let topic { store.rename(id, title: topic) }
         exportSummary(meetingId: id, markdown: md, title: topic)
-        return true
     }
 
     /// Surfaces the REAL summary failure reason instead of a generic toast: a

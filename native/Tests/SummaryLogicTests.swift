@@ -34,26 +34,25 @@ final class SummaryLogicTests: XCTestCase {
         }
     }
 
+    /// The narrative template: `# title` + `> [!tip]` stay (title extraction), the body
+    /// is per-topic `##` sections of PROSE (lists forbidden outside Next steps).
     func testRussianPromptStructure() {
         let p = SummaryPrompts.system(language: "ru")
-        assertStructure(p, ["# ", "> [!tip]", "## Главное", "## Обсуждение",
-                            "## Решения", "## Задачи", "> [!warning]", "## Цитаты"])
+        assertStructure(p, ["# ", "> [!tip]", "## Дальнейшие шаги", "СВЯЗНОЙ ПРОЗОЙ", "СПИСКИ ЗАПРЕЩЕНЫ"])
         XCTAssertFalse(p.contains("## Участники"))
         XCTAssertTrue(p.contains("Встреча прошла успешно"))
     }
 
     func testEnglishPromptStructure() {
         let p = SummaryPrompts.system(language: "en")
-        assertStructure(p, ["# ", "> [!tip]", "## Key points", "## Discussion",
-                            "## Decisions", "## Action items", "> [!warning]", "## Quotes"])
+        assertStructure(p, ["# ", "> [!tip]", "## Next steps", "FLOWING PROSE", "BULLET LISTS ARE FORBIDDEN"])
         XCTAssertFalse(p.contains("## Participants"))
         XCTAssertTrue(p.contains("Meeting"))
     }
 
     func testChinesePromptStructure() {
         let p = SummaryPrompts.system(language: "zh")
-        assertStructure(p, ["# ", "> [!tip]", "## 重点", "## 讨论",
-                            "## 决定", "## 行动项", "> [!warning]", "## 引用"])
+        assertStructure(p, ["# ", "> [!tip]", "## 后续步骤", "散文", "禁止使用列表"])
         XCTAssertFalse(p.contains("## 参会者"))
     }
 

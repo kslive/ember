@@ -14,6 +14,8 @@ public final class SettingsStore: ObservableObject {
     public static let micDeviceKey = "ember.micDevice"
     public static let systemDeviceKey = "ember.systemDevice"
     public static let diarizationKey = "ember.diarization"
+    public static let deepseekModelKey = "ember.deepseekModel"
+    private static let deepseekAccount = "deepseek-api-key"
 
     @Published public var summaryModelId: String {
         didSet { UserDefaults.standard.set(summaryModelId, forKey: Self.summaryKey) }
@@ -55,6 +57,11 @@ public final class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(diarizationEnabled, forKey: Self.diarizationKey) }
     }
 
+    /// DeepSeek model id chosen from the key's GET /models list ("" = none picked).
+    @Published public var deepseekModel: String {
+        didSet { UserDefaults.standard.set(deepseekModel, forKey: Self.deepseekModelKey) }
+    }
+
     public init() {
         summaryModelId = UserDefaults.standard.string(forKey: Self.summaryKey) ?? SummaryCatalog.defaultId
         whisperModelId = UserDefaults.standard.string(forKey: Self.whisperKey) ?? TranscriptionCatalog.defaultId
@@ -65,6 +72,28 @@ public final class SettingsStore: ObservableObject {
         preferredMicUID = UserDefaults.standard.string(forKey: Self.micDeviceKey) ?? ""
         preferredSystemUID = UserDefaults.standard.string(forKey: Self.systemDeviceKey) ?? ""
         diarizationEnabled = (UserDefaults.standard.object(forKey: Self.diarizationKey) as? Bool) ?? true
+        deepseekModel = UserDefaults.standard.string(forKey: Self.deepseekModelKey) ?? ""
+    }
+
+    /// DeepSeek API key (Keychain — never UserDefaults). nil = cloud path disabled.
+    public static func deepseekKey() -> String? {
+        let v = KeychainStore.get(deepseekAccount) ?? ""
+        return v.isEmpty ? nil : v
+    }
+
+    public static func setDeepseekKey(_ key: String) {
+        KeychainStore.set(key, account: deepseekAccount)
+    }
+
+    public static func deleteDeepseekKey() {
+        KeychainStore.delete(deepseekAccount)
+        UserDefaults.standard.removeObject(forKey: deepseekModelKey)
+    }
+
+    /// Chosen DeepSeek model id, or nil when none stored.
+    public static func deepseekModelId() -> String? {
+        let v = UserDefaults.standard.string(forKey: deepseekModelKey) ?? ""
+        return v.isEmpty ? nil : v
     }
 
     public static func currentSummaryModelId() -> String {
