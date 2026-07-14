@@ -38,7 +38,7 @@ final class EmberTests: XCTestCase {
 
     func testCatalogs() {
         XCTAssertNotNil(SummaryCatalog.spec(for: SummaryCatalog.defaultId))
-        XCTAssertEqual(SummaryCatalog.all.count, 3)
+        XCTAssertEqual(SummaryCatalog.all.count, 6)
         XCTAssertTrue(SummaryCatalog.all.contains { $0.badge == .recommended })
         XCTAssertNotNil(TranscriptionCatalog.all.first { $0.id == TranscriptionCatalog.defaultId })
     }

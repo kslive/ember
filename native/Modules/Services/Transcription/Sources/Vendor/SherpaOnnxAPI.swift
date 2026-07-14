@@ -694,6 +694,17 @@ class SherpaOnnxOfflineRecongitionResult {
     return (0..<result.pointee.count).map { p[Int($0)] }
   }()
 
+  // Ember addition: per-token strings for the offline result (present in the C
+  // struct as tokens_arr but not surfaced by the upstream wrapper; mirrors the
+  // online result's accessor). Needed to split GigaAM chunks into utterances.
+  private lazy var _tokens: [String] = {
+    guard let arr = result.pointee.tokens_arr else { return [] }
+    return (0..<result.pointee.count).compactMap { idx -> String? in
+      guard let ptr = arr[Int(idx)] else { return nil }
+      return String(cString: ptr)
+    }
+  }()
+
   private lazy var _durations: [Float] = {
     guard let p = result.pointee.durations else { return [] }
     return (0..<result.pointee.count).map { p[Int($0)] }
@@ -738,6 +749,7 @@ class SherpaOnnxOfflineRecongitionResult {
   var text: String { _text }
   var count: Int { Int(result.pointee.count) }
   var timestamps: [Float] { _timestamps }
+  var tokens: [String] { _tokens }
 
   // Non-empty for TDT models. Empty for all other non-TDT models
   var durations: [Float] { _durations }

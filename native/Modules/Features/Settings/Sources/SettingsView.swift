@@ -318,7 +318,9 @@ public struct SettingsView: View {
         } else {
             ForEach(SummaryCatalog.all) { m in
                 VStack(alignment: .trailing, spacing: 4) {
-                    EmberModelCard(name: m.displayName, desc: locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
+                    EmberModelCard(name: m.displayName,
+                                   desc: (m.noteKey.map { locale.t($0) + " · " } ?? "")
+                                       + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
                                    meta: "\(m.sizeMB) \(sizeUnit) · \(m.contextTokens) \(locale.t("model.tokens"))",
                                    badge: badgeText(m.badge),
                                    state: summaryState(m.id), totalMB: m.sizeMB, errorText: summaryError(m.id),

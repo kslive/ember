@@ -53,7 +53,7 @@ final class OnboardingTests: XCTestCase {
     }
 
     func testSummaryCatalog() {
-        XCTAssertEqual(SummaryCatalog.defaultId, "qwen3:4b")
+        XCTAssertEqual(SummaryCatalog.defaultId, "qwen3:4b-2507")
         XCTAssertNotNil(SummaryCatalog.spec(for: SummaryCatalog.defaultId))
         XCTAssertNil(SummaryCatalog.spec(for: "nope"))
         for m in SummaryCatalog.all {
@@ -112,7 +112,7 @@ final class OnboardingTests: XCTestCase {
             "onb.welcome.f1", "onb.welcome.f1sub", "onb.summary.title", "onb.whisper.title", "onb.step",
             "model.download", "model.downloading", "model.failed", "model.retry", "model.select",
             "model.ready", "model.selected", "common.continue", "common.back", "common.next", "common.done",
-            "meeting.model", "meeting.regenerate", "meeting.generate", "meeting.contextHint"
+            "meeting.model", "meeting.regenerate", "meeting.generate"
         ]
         for key in keys {
             XCTAssertNotNil(LocalizedStrings.en[key], "en missing \(key)")

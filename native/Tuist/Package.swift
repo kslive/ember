@@ -46,7 +46,7 @@ let package = Package(
     name: "EmberDependencies",
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0"),
-        .package(url: "https://github.com/ml-explore/mlx-swift-examples", from: "2.25.5"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "3.31.4"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
         .package(url: "https://github.com/FluidInference/FluidAudio", from: "0.15.4"),
         .package(url: "https://github.com/willwade/sherpa-onnx-spm", from: "1.13.14"),

@@ -215,3 +215,88 @@ final class SummaryLogicTests: XCTestCase {
         XCTAssertEqual(SummaryPrompts.languageName("fr"), "French")
     }
 }
+
+/// Grounding blocks for the facts-then-write pipeline: roster parsing, verbatim
+/// numbers, and the literal-support verifier (the hallucination guard).
+final class SummaryGroundingTests: XCTestCase {
+    private let transcript = """
+    Я: давай накинем четыре дня на задачу
+    Собеседник 1: у меня выходит шесть с половиной дней, точнее 6,5
+    Собеседник 2: тарифы это 0,5 дня и еще 80 процентов готово
+    Я: окей, бэк-офис ходит на стейдж и на прод
+    """
+
+    func testRosterInOrderOfAppearance() {
+        XCTAssertEqual(SummaryGrounding.roster(fromTranscript: transcript), ["Я", "Собеседник 1", "Собеседник 2"])
+    }
+
+    func testRosterIgnoresTimecodesAndLongPrefixes() {
+        let t = "[00:01] длинный текст без метки: с двоеточием\nЯ: привет"
+        XCTAssertEqual(SummaryGrounding.roster(fromTranscript: t), ["Я"])
+    }
+
+    func testKeyNumbersFindVerbatimMentions() {
+        let numbers = SummaryGrounding.keyNumbers(fromTranscript: transcript)
+        XCTAssertTrue(numbers.contains { $0.contains("6,5") })
+        XCTAssertTrue(numbers.contains { $0.contains("80") })
+        XCTAssertFalse(numbers.isEmpty)
+    }
+
+    func testKeyNumbersCap() {
+        let many = (1 ... 40).map { "число \($0) штук" }.joined(separator: "\n")
+        XCTAssertEqual(SummaryGrounding.keyNumbers(fromTranscript: many, cap: 20).count, 20)
+    }
+
+    func testVerifiedFactsKeepsSupportedDropsInvented() {
+        let facts = """
+        - [Задача] Собеседник 1 оценил задачу в шесть с половиной дней
+        - [Факт] Обсудили квартальный бюджет маркетинга на миллион
+        - [Решение] бэк-офис должен ходить только на прод
+        """
+        let verified = SummaryGrounding.verifiedFacts(facts, transcript: transcript)
+        XCTAssertTrue(verified.contains("шесть с половиной"))
+        XCTAssertTrue(verified.contains("бэк-офис"))
+        XCTAssertFalse(verified.contains("маркетинга"))
+    }
+
+    func testVerifiedFactsDropsUnsupportedDigits() {
+        let facts = "- [Факт] оценка составила 99 дней"
+        XCTAssertTrue(SummaryGrounding.verifiedFacts(facts, transcript: transcript).isEmpty)
+    }
+
+    func testVerifiedFactsEmptyInput() {
+        XCTAssertTrue(SummaryGrounding.verifiedFacts("", transcript: transcript).isEmpty)
+    }
+}
+
+/// Chunk splitting with tail overlap (map-reduce seams keep context).
+final class SplitChunksTests: XCTestCase {
+    func testSingleChunkNoOverlapDuplication() {
+        let text = "a\nb\nc"
+        XCTAssertEqual(SummaryService.splitChunks(text, maxChars: 1000), [text])
+    }
+
+    func testChunksRespectMaxAndOverlap() {
+        let lines = (1 ... 30).map { String(repeating: "x\($0 % 10)", count: 20) }
+        let text = lines.joined(separator: "\n")
+        let chunks = SummaryService.splitChunks(text, maxChars: 600)
+        XCTAssertGreaterThan(chunks.count, 1)
+        for chunk in chunks {
+            XCTAssertLessThanOrEqual(chunk.count, 600)
+        }
+        for i in 1 ..< chunks.count {
+            let prevLines = chunks[i - 1].components(separatedBy: "\n")
+            let curLines = chunks[i].components(separatedBy: "\n")
+            XCTAssertEqual(prevLines.last, curLines.first, "chunk \(i) must start with the previous tail")
+        }
+        let joined = Set(chunks.flatMap { $0.components(separatedBy: "\n") })
+        XCTAssertEqual(joined, Set(lines), "no line may be lost")
+    }
+
+    func testNoTrailingOverlapOnlyChunk() throws {
+        let lines = (1 ... 10).map { "line-\($0)-" + String(repeating: "y", count: 30) }
+        let chunks = SummaryService.splitChunks(lines.joined(separator: "\n"), maxChars: 120)
+        XCTAssertEqual(chunks.last?.isEmpty, false)
+        XCTAssertTrue(try XCTUnwrap(try chunks.last?.components(separatedBy: "\n").contains(XCTUnwrap(lines.last))))
+    }
+}

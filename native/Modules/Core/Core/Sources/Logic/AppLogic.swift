@@ -58,39 +58,72 @@ public enum TranscriptMerge {
     /// picks up the speaker output, so the other side's speech is transcribed by BOTH
     /// passes.
     ///
-    /// SYSTEM WINS: system segments are authoritative for the "other side" and are
-    /// processed first; a mic segment that duplicates any already-kept segment (starts
-    /// within `window` seconds AND word-set Jaccard ≥ `threshold`, both ≥ `minWords`
-    /// words) is dropped as bleed. This guarantees the other side's audio is labeled
-    /// [С] (system) and NEVER mislabeled [Я] (mic bleed). Genuinely distinct
-    /// simultaneous speech (different words at the same time → low Jaccard) and short
-    /// backchannels (< minWords) are kept. Used for BOTH the live monitor and the final
-    /// saved transcript.
+    /// SYSTEM WINS, and dedup is strictly one-directional — a MIC candidate against a
+    /// kept SYSTEM segment. Bleed physics only goes speaker→mic; comparing within one
+    /// source could false-drop genuine repetition (С2 agreeing with С1 verbatim, the
+    /// user dictating a phrase twice). Two tiers:
+    ///
+    /// STRICT (near in time): intervals within `window` seconds AND word-set Jaccard ≥
+    /// `threshold` OR the smaller side's words CONTAINED in the other's ≥ `containment`,
+    /// both ≥ `minWords` words.
+    ///
+    /// BLEED (nested in time): the mic interval sits INSIDE the system interval
+    /// (± `nestSlack`) — there the mic heard the very audio the system segment
+    /// transcribed, and ASR variance breaks exact-token measures (the same speech came
+    /// out as "окулус"/"околоса" → containment 0.82 leaked). The mic segment drops when
+    /// ≥ `bleedThreshold` of its ORDERED content words (≥ 3 chars, minus a small
+    /// high-frequency stoplist, at least `bleedMinContent` of them) reappear in the
+    /// system segment's word sequence in the same order (LCS). The order requirement is
+    /// what keeps a genuine user comment built from the same topic nouns safe — echoed
+    /// nouns rarely reproduce the source's exact sequence.
+    ///
+    /// Genuinely distinct simultaneous speech and short backchannels are kept. Used for
+    /// BOTH the live monitor and the final saved transcript.
     public static func merge(
         mic: [TranscriptSegment],
         system: [TranscriptSegment],
         window: Double = 6,
         threshold: Double = 0.6,
-        minWords: Int = 3
+        containment: Double = 0.85,
+        minWords: Int = 3,
+        bleedThreshold: Double = 0.65,
+        bleedMinContent: Int = 5,
+        nestSlack: Double = 1.5
     ) -> [TranscriptSegment] {
-        let ordered = system.sorted { $0.startSeconds < $1.startSeconds }
-            + mic.sorted { $0.startSeconds < $1.startSeconds }
-        var kept: [TranscriptSegment] = []
-        var keptInfo: [(start: Double, tokens: Set<String>)] = []
-        for seg in ordered {
-            let tokens = tokenize(seg.text)
-            if tokens.count >= minWords {
-                var isDup = false
-                for info in keptInfo where abs(seg.startSeconds - info.start) <= window {
-                    if info.tokens.count >= minWords, jaccard(tokens, info.tokens) >= threshold {
-                        isDup = true
-                        break
-                    }
+        struct SysInfo {
+            let start: Double
+            let end: Double
+            let tokens: Set<String>
+            let content: [String]
+        }
+        var kept = system.sorted { $0.startSeconds < $1.startSeconds }
+        let sysInfo = kept.map { seg in
+            let ordered = tokenizeOrdered(seg.text)
+            return SysInfo(start: seg.startSeconds, end: max(seg.endSeconds, seg.startSeconds),
+                           tokens: Set(ordered), content: contentTokens(ordered))
+        }
+        for seg in mic.sorted(by: { $0.startSeconds < $1.startSeconds }) {
+            let ordered = tokenizeOrdered(seg.text)
+            let tokens = Set(ordered)
+            let content = contentTokens(ordered)
+            let end = max(seg.endSeconds, seg.startSeconds)
+            var isDup = false
+            for info in sysInfo {
+                if tokens.count >= minWords, info.tokens.count >= minWords,
+                   max(seg.startSeconds, info.start) - min(end, info.end) <= window,
+                   jaccard(tokens, info.tokens) >= threshold
+                   || containmentRatio(tokens, info.tokens) >= containment {
+                    isDup = true
+                    break
                 }
-                if isDup { continue }
+                if content.count >= bleedMinContent,
+                   seg.startSeconds >= info.start - nestSlack, end <= info.end + nestSlack,
+                   Double(lcsLength(content, info.content)) / Double(content.count) >= bleedThreshold {
+                    isDup = true
+                    break
+                }
             }
-            kept.append(seg)
-            keptInfo.append((seg.startSeconds, tokens))
+            if !isDup { kept.append(seg) }
         }
         return kept.sorted { $0.startSeconds < $1.startSeconds }
     }
@@ -98,17 +131,90 @@ public enum TranscriptMerge {
     /// Lowercased alphanumeric word set (handles Latin + Cyrillic; punctuation/markers
     /// like `*звук сцены*` reduce to their words so bleed pairs still match).
     static func tokenize(_ s: String) -> Set<String> {
+        Set(tokenizeOrdered(s))
+    }
+
+    /// Ordered lowercased alphanumeric words, duplicates preserved — the bleed tier's
+    /// LCS depends on repeated tokens ("пятьсот двенадцать гигабайт" twice must count
+    /// twice). CJK runs (Chinese ASR output has no spaces — a whole sentence would be
+    /// ONE "word", making every similarity measure 0-or-1) are split into overlapping
+    /// character bigrams, the standard CJK indexing unit; non-CJK tokenization is
+    /// byte-identical to before.
+    static func tokenizeOrdered(_ s: String) -> [String] {
         var current = ""
-        var words: Set<String> = []
+        var currentIsCJK = false
+        var words: [String] = []
+        func flush() {
+            guard !current.isEmpty else { return }
+            if currentIsCJK {
+                let chars = current.map(String.init)
+                words.append(contentsOf: chars.count == 1
+                    ? chars
+                    : (0 ..< chars.count - 1).map { chars[$0] + chars[$0 + 1] })
+            } else {
+                words.append(current)
+            }
+            current = ""
+        }
         for scalar in s.lowercased().unicodeScalars {
             if CharacterSet.alphanumerics.contains(scalar) {
+                let cjk = isCJK(scalar)
+                if cjk != currentIsCJK { flush(); currentIsCJK = cjk }
                 current.unicodeScalars.append(scalar)
-            } else if !current.isEmpty {
-                words.insert(current); current = ""
+            } else {
+                flush()
             }
         }
-        if !current.isEmpty { words.insert(current) }
+        flush()
         return words
+    }
+
+    private static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3040 ... 0x30FF, 0x3400 ... 0x4DBF, 0x4E00 ... 0x9FFF, 0xAC00 ... 0xD7AF, 0xF900 ... 0xFAFF:
+            true
+        default:
+            false
+        }
+    }
+
+    /// High-frequency filler that survives the 3-char floor. Long system segments
+    /// contain most of these anyway, so leaving them in would let an unrelated user
+    /// comment "match" a long utterance by order luck.
+    private static let bleedStoplist: Set<String> = [
+        "уже", "тот", "как", "был", "это", "что", "все", "так", "вот", "там", "нет", "еще", "ещё",
+        "the", "and", "was", "not", "you", "for"
+    ]
+
+    /// Content words for the bleed tier: ≥ 3 characters, stoplist removed. CJK bigrams
+    /// (2 chars) always count as content — a bigram is already word-sized, and filler
+    /// characters are diluted inside bigrams, so no CJK stoplist is needed.
+    static func contentTokens(_ ordered: [String]) -> [String] {
+        ordered.filter { token in
+            guard !bleedStoplist.contains(token) else { return false }
+            return token.count >= 3 || (!token.isEmpty && token.unicodeScalars.allSatisfy(isCJK))
+        }
+    }
+
+    /// Longest common subsequence length over word arrays (two-row DP).
+    static func lcsLength(_ a: [String], _ b: [String]) -> Int {
+        guard !a.isEmpty, !b.isEmpty else { return 0 }
+        var prev = [Int](repeating: 0, count: b.count + 1)
+        var cur = prev
+        for x in a {
+            for (j, y) in b.enumerated() {
+                cur[j + 1] = x == y ? prev[j] + 1 : max(prev[j + 1], cur[j])
+            }
+            swap(&prev, &cur)
+        }
+        return prev[b.count]
+    }
+
+    /// Share of the SMALLER set's words present in the larger one (1.0 = full subset).
+    static func containmentRatio(_ a: Set<String>, _ b: Set<String>) -> Double {
+        let smaller = min(a.count, b.count)
+        guard smaller > 0 else { return 0 }
+        return Double(a.intersection(b).count) / Double(smaller)
     }
 
     static func jaccard(_ a: Set<String>, _ b: Set<String>) -> Double {

@@ -287,6 +287,7 @@ final class AppModel: ObservableObject {
             recordingStartedAt = nil
             recordingCalendarTitle = nil
             autoStarted = false
+            transcription.unload()
             showToast(tr("toast.autoDiscarded"), tone: .info)
             return
         }
@@ -304,7 +305,10 @@ final class AppModel: ObservableObject {
         recordingStartedAt = nil
         autoStarted = false
         route = .home
-        guard mic != nil || system != nil else { return }
+        guard mic != nil || system != nil else {
+            transcription.unload()
+            return
+        }
         processingIds.insert(id)
         notify("Recording stopped — processing…", "Запись остановлена — обработка…", "录音已停止——处理中…")
         showToast(tr("toast.recStopped"), tone: .info)
@@ -384,9 +388,11 @@ final class AppModel: ObservableObject {
                 showToast(tr("toast.summaryReady"), tone: .good)
             }
         }
-        // Free the CoreML model after 5 idle minutes — it otherwise stays resident
-        // (1.5–2+ GB) between meetings; the next recording reloads it in seconds.
-        transcription.scheduleIdleUnload()
+        // Free the ASR model IMMEDIATELY — it otherwise stays resident (1.5–2+ GB)
+        // between meetings; the next recording reloads it in seconds. Skipped when a
+        // new recording already started: its live loop is using the model, and that
+        // session's own processing will unload at its end.
+        if !isRecordingActive { transcription.unload() }
     }
 
     /// Generates + persists a summary using ONLY the user-selected model — no silent
@@ -408,20 +414,27 @@ final class AppModel: ObservableObject {
             return true
         }
 
-        transcription.unload()
+        // Reclaim the ASR model's RAM before loading MLX — unless a NEW recording is
+        // already live and its loop still needs it.
+        if !isRecordingActive { transcription.unload() }
         await Task.yield()
         try? await Task.sleep(nanoseconds: 200_000_000)
 
+        // The MLX weights are freed IMMEDIATELY after generation on every exit path
+        // (the error message is read from status BEFORE unload resets it).
         await summary.ensureLoaded(repoId: repo)
         guard summary.isReady else {
             showToast(summaryErrorMessage(), tone: .error)
+            summary.unload()
             return false
         }
         let md = await summary.summarize(transcript: text, languageCode: lang)
         guard !md.isEmpty else {
             showToast(summaryErrorMessage(), tone: .error)
+            summary.unload()
             return false
         }
+        summary.unload()
         persistSummary(meetingId: id, markdown: md)
         return true
     }

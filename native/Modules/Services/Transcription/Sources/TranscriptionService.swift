@@ -16,10 +16,17 @@ private final class GigaBox: @unchecked Sendable {
         self.rec = rec
     }
 
-    func decode(_ samples: [Float]) -> String {
+    struct Decoded {
+        let text: String
+        let tokens: [String]
+        let timestamps: [Float]
+    }
+
+    func decode(_ samples: [Float]) -> Decoded {
         lock.lock()
         defer { lock.unlock() }
-        return rec.decode(samples: samples, sampleRate: 16000).text
+        let r = rec.decode(samples: samples, sampleRate: 16000)
+        return Decoded(text: r.text, tokens: r.tokens, timestamps: r.timestamps)
     }
 }
 
@@ -43,7 +50,6 @@ public final class TranscriptionService: ObservableObject {
     private var giga: GigaBox?
     private var loadedModel: String?
     private var tasks: [String: Task<Void, Never>] = [:]
-    private var idleUnloadTask: Task<Void, Never>?
 
     /// Engine-aware on-disk location for a catalog model.
     private static func modelDir(_ variant: String) -> URL {
@@ -168,20 +174,8 @@ public final class TranscriptionService: ObservableObject {
         if loadedModel == variant { kit = nil; giga = nil; loadedModel = nil; status = .idle }
     }
 
-    /// Auto-unload after `seconds` of idle; any new load/transcription cancels it.
-    /// Without this the CoreML model (1.5–2+ GB) lived in RAM forever between meetings.
-    public func scheduleIdleUnload(seconds: UInt64 = 300) {
-        idleUnloadTask?.cancel()
-        idleUnloadTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
-            guard !Task.isCancelled else { return }
-            self?.unload()
-        }
-    }
-
     /// Loads (downloading on first use) the given catalog model on its engine.
     public func ensureLoaded(model: String) async {
-        idleUnloadTask?.cancel()
         if loadedModel == model, isReady { return }
         status = .loading
         if TranscriptionCatalog.engine(for: model) == .gigaAM {
@@ -244,13 +238,12 @@ public final class TranscriptionService: ObservableObject {
         }
     }
 
-    /// Frees the loaded WhisperKit model to reclaim RAM (e.g. before loading the
-    /// large MLX summary model on memory-tight machines). The next transcription
-    /// reloads it. No-op while actively transcribing.
+    /// Frees the loaded ASR model (WhisperKit CoreML or GigaAM ONNX) to reclaim RAM.
+    /// Called IMMEDIATELY after each session's final pass — the model (1.5–2+ GB)
+    /// must not stay resident between meetings; the next recording reloads it in
+    /// seconds. No-op while actively transcribing.
     public func unload() {
         if case .transcribing = status { return }
-        idleUnloadTask?.cancel()
-        idleUnloadTask = nil
         kit = nil
         giga = nil
         loadedModel = nil
@@ -264,7 +257,6 @@ public final class TranscriptionService: ObservableObject {
     /// short 1.8s growing-window clips; live relies on the caller's RMS gate to skip
     /// silence instead. The FINAL pass (long audio) uses `strict: true`.
     public func transcribeSamples(_ samples: [Float], meetingId: String, language: String?, strict: Bool = false) async -> [TranscriptSegment] {
-        idleUnloadTask?.cancel()
         guard !samples.isEmpty else { return [] }
         if let giga { return await Self.transcribeGiga(giga, samples: samples, meetingId: meetingId) }
         guard let kit else { return [] }
@@ -327,22 +319,71 @@ public final class TranscriptionService: ObservableObject {
     }
 
     /// GigaAM decode off the main thread: split into ≤28s chunks at the quietest
-    /// point (the model is built for ≤~30s segments), decode sequentially, one
-    /// segment per chunk with absolute timecodes. Same downstream filters as Whisper.
+    /// point (the model is built for ≤~30s segments), decode sequentially, then
+    /// split every chunk into UTTERANCES at inter-token pauses. One coarse segment
+    /// per 25s chunk made speaker diarization useless (a segment can carry only
+    /// one speaker label); utterance-level segments restore per-phrase labels.
     private nonisolated static func transcribeGiga(_ box: GigaBox, samples: [Float], meetingId: String) async -> [TranscriptSegment] {
         await Task.detached(priority: .userInitiated) {
             var segs: [TranscriptSegment] = []
             for chunk in Self.gigaChunks(samples) {
-                let text = Self.cleanText(box.decode(chunk.samples))
-                guard Self.hasSpeech(text), !Self.isHallucination(text) else { continue }
-                segs.append(TranscriptSegment(
-                    meetingId: meetingId, text: text,
-                    startSeconds: Double(chunk.offset) / 16000.0,
-                    endSeconds: Double(chunk.offset + chunk.samples.count) / 16000.0
-                ))
+                let decoded = box.decode(chunk.samples)
+                let base = Double(chunk.offset) / 16000.0
+                let chunkEnd = Double(chunk.offset + chunk.samples.count) / 16000.0
+                let pieces = Self.gigaUtterances(tokens: decoded.tokens, timestamps: decoded.timestamps)
+                if pieces.isEmpty {
+                    let text = Self.cleanText(decoded.text)
+                    guard Self.hasSpeech(text), !Self.isHallucination(text) else { continue }
+                    segs.append(TranscriptSegment(
+                        meetingId: meetingId, text: text, startSeconds: base, endSeconds: chunkEnd
+                    ))
+                    continue
+                }
+                for piece in pieces {
+                    let text = Self.cleanText(piece.text)
+                    guard Self.hasSpeech(text), !Self.isHallucination(text) else { continue }
+                    segs.append(TranscriptSegment(
+                        meetingId: meetingId, text: text,
+                        startSeconds: base + piece.start,
+                        endSeconds: min(base + piece.end, chunkEnd)
+                    ))
+                }
             }
             return Self.collapseRepeats(segs)
         }.value
+    }
+
+    /// Splits one decoded GigaAM chunk into utterances at inter-token pauses.
+    /// Tokens are sentencepiece BPE ("▁" marks a word start) with per-token start
+    /// times; a gap ≥ `pauseSeconds` opens a new utterance. The model emits no
+    /// per-token durations, so an utterance ends ~`tailSeconds` after its last
+    /// token. Empty/mismatched inputs → empty (caller falls back to whole-chunk).
+    nonisolated static func gigaUtterances(
+        tokens: [String], timestamps: [Float], pauseSeconds: Float = 0.9
+    ) -> [(text: String, start: Double, end: Double)] {
+        guard !tokens.isEmpty, tokens.count == timestamps.count else { return [] }
+        let tailSeconds: Float = 0.3
+        var out: [(text: String, start: Double, end: Double)] = []
+        var current = ""
+        var start = timestamps[0]
+        var last = timestamps[0]
+        func flush() {
+            let text = current.replacingOccurrences(of: "▁", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { out.append((text, Double(start), Double(last + tailSeconds))) }
+            current = ""
+        }
+        for (i, token) in tokens.enumerated() {
+            let ts = timestamps[i]
+            if !current.isEmpty, ts - last >= pauseSeconds {
+                flush()
+                start = ts
+            }
+            current += token
+            last = ts
+        }
+        flush()
+        return out
     }
 
     /// Splits 16 kHz audio into chunks of at most `maxSeconds`, cutting at the
@@ -449,7 +490,6 @@ public final class TranscriptionService: ObservableObject {
     /// already rejected everything, re-running the mix with the same strict thresholds
     /// would reject it too.
     public func transcribe(url: URL, meetingId: String, language: String?, strict: Bool = false) async -> [TranscriptSegment] {
-        idleUnloadTask?.cancel()
         if let giga {
             let samples = Self.loadSamples16k(url)
             return await Self.transcribeGiga(giga, samples: samples, meetingId: meetingId)

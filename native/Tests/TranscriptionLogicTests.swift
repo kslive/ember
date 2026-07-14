@@ -131,6 +131,36 @@ final class TranscriptionLogicTests: XCTestCase {
         XCTAssertTrue(cut >= silentAt && cut <= silentAt + 16000, "cut \(cut) should land in the silent second")
     }
 
+    func testGigaUtterancesSplitsAtPause() {
+        let tokens = ["▁при", "вет", "▁мир", "▁как", "▁дела"]
+        let stamps: [Float] = [0.0, 0.2, 0.5, 2.0, 2.3]
+        let out = TranscriptionService.gigaUtterances(tokens: tokens, timestamps: stamps)
+        XCTAssertEqual(out.count, 2)
+        XCTAssertEqual(out[0].text, "привет мир")
+        XCTAssertEqual(out[1].text, "как дела")
+        XCTAssertEqual(out[0].start, 0.0, accuracy: 0.001)
+        XCTAssertEqual(out[0].end, 0.8, accuracy: 0.001)
+        XCTAssertEqual(out[1].start, 2.0, accuracy: 0.001)
+        XCTAssertEqual(out[1].end, 2.6, accuracy: 0.001)
+    }
+
+    func testGigaUtterancesNoPauseSingleUtterance() {
+        let out = TranscriptionService.gigaUtterances(
+            tokens: ["▁раз", "▁два", "▁три"], timestamps: [0.0, 0.4, 0.8]
+        )
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out[0].text, "раз два три")
+    }
+
+    func testGigaUtterancesEdgeCases() {
+        XCTAssertTrue(TranscriptionService.gigaUtterances(tokens: [], timestamps: []).isEmpty)
+        XCTAssertTrue(TranscriptionService.gigaUtterances(tokens: ["▁а"], timestamps: [1.0, 2.0]).isEmpty)
+        let single = TranscriptionService.gigaUtterances(tokens: ["▁ага"], timestamps: [5.0])
+        XCTAssertEqual(single.count, 1)
+        XCTAssertEqual(single[0].text, "ага")
+        XCTAssertEqual(single[0].start, 5.0, accuracy: 0.001)
+    }
+
     func testHasSpeechFiltersPunctuationOnly() {
         XCTAssertFalse(TranscriptionService.hasSpeech("-"))
         XCTAssertFalse(TranscriptionService.hasSpeech("—"))

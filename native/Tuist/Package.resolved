@@ -1,5 +1,5 @@
 {
-  "originHash" : "12c027c269a52dc4cdac8d345352511cb2372b2cd4d8bee0183ab43ec6748036",
+  "originHash" : "bfbf3574a64c16f75ac0a3b0efb8d8bab8fd7af38b0c07be58338f48e7583c41",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -20,15 +20,6 @@
       }
     },
     {
-      "identity" : "gzipswift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/1024jp/GzipSwift",
-      "state" : {
-        "revision" : "731037f6cc2be2ec01562f6597c1d0aa3fe6fd05",
-        "version" : "6.0.1"
-      }
-    },
-    {
       "identity" : "jinja",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/johnmai-dev/Jinja",
@@ -42,17 +33,17 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ml-explore/mlx-swift",
       "state" : {
-        "revision" : "96c0f69cf15f38abd6248bb71fca908171dab1d8",
-        "version" : "0.25.6"
+        "revision" : "0bb916c67f4b9e5c682cbe02a42c701c93ab5021",
+        "version" : "0.31.6"
       }
     },
     {
-      "identity" : "mlx-swift-examples",
+      "identity" : "mlx-swift-lm",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ml-explore/mlx-swift-examples",
+      "location" : "https://github.com/ml-explore/mlx-swift-lm",
       "state" : {
-        "revision" : "dddb0b3871390dd9dea8e7ff2c347cf7e74cec9d",
-        "version" : "2.25.7"
+        "revision" : "bd4b7434e6bdb588c7ef55706ff8904cb7fd4c57",
+        "version" : "3.31.4"
       }
     },
     {
@@ -89,6 +80,15 @@
       "state" : {
         "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
         "version" : "1.1.1"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "79e4b74a295b6eb74a8b585e3a39d29e70c1dbd1",
+        "version" : "603.0.2"
       }
     },
     {

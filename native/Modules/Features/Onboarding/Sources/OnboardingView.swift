@@ -272,7 +272,9 @@ public struct OnboardingView: View {
 
     private var summaryCards: [CardVM] {
         SummaryCatalog.all.map { m in
-            CardVM(id: m.id, name: m.displayName, desc: locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
+            CardVM(id: m.id, name: m.displayName,
+                   desc: (m.noteKey.map { locale.t($0) + " · " } ?? "")
+                       + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
                    meta: "\(m.sizeMB) \(sizeUnit) · \(m.contextTokens) \(locale.t("model.tokens"))", badge: badgeText(m.badge), sizeMB: m.sizeMB)
         }
     }

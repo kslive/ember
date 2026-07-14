@@ -8,8 +8,8 @@ let baseSettings: SettingsDictionary = [
     "DEVELOPMENT_TEAM": "",
     "ENABLE_HARDENED_RUNTIME": "YES",
     "SWIFT_VERSION": "5.0",
-    "MARKETING_VERSION": "1.5.2",
-    "CURRENT_PROJECT_VERSION": "12",
+    "MARKETING_VERSION": "1.5.3",
+    "CURRENT_PROJECT_VERSION": "13",
     "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
 ]
 
@@ -50,6 +50,7 @@ let transcriptionService = mod("TranscriptionService", path: "Modules/Services/T
 ])
 let summaryService = mod("SummaryService", path: "Modules/Services/Summary", deps: [
     .target(name: "Core"), .external(name: "MLXLLM"), .external(name: "MLXLMCommon"),
+    .external(name: "Transformers"),
 ])
 let persistenceService = mod("PersistenceService", path: "Modules/Services/Persistence", deps: [
     .target(name: "Core"), .external(name: "GRDB"),

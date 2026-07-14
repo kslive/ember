@@ -65,4 +65,27 @@ final class DiarizationLogicTests: XCTestCase {
         XCTAssertEqual(out[1].speaker, 2)
         XCTAssertEqual(out[2].speaker, 0)
     }
+
+    /// A significant cluster that never wins a transcript segment (start-of-meeting
+    /// chime/music) must not consume an ordinal — users saw [С2]/[С3] with no [С1].
+    func testAssignNonWinningClusterConsumesNoOrdinal() {
+        let turns = [SpeakerTurn(rawId: "chime", start: 0, end: 8),
+                     SpeakerTurn(rawId: "a", start: 10, end: 40),
+                     SpeakerTurn(rawId: "b", start: 45, end: 80)]
+        let segs = [sys(12, 20), sys(50, 60)]
+        let out = DiarizationMap.assign(segs, turns: turns)
+        XCTAssertEqual(out[0].speaker, 1)
+        XCTAssertEqual(out[1].speaker, 2)
+    }
+
+    /// Two significant clusters, but only one ever wins a segment → numbering off
+    /// (a lone numbered speaker is noise).
+    func testAssignSingleWinningClusterStaysUnnumbered() {
+        let turns = [SpeakerTurn(rawId: "music", start: 0, end: 10),
+                     SpeakerTurn(rawId: "a", start: 12, end: 60)]
+        let segs = [sys(15, 25), sys(30, 45)]
+        let out = DiarizationMap.assign(segs, turns: turns)
+        XCTAssertEqual(out[0].speaker, 0)
+        XCTAssertEqual(out[1].speaker, 0)
+    }
 }

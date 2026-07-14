@@ -182,6 +182,164 @@ final class MainFlowTests: XCTestCase {
         XCTAssertEqual(AudioLevel.leadingSilence(buf, threshold: 0.02), 18400)
     }
 
+    /// Partial bleed: the mic hears only a FRAGMENT of the speaker's phrase —
+    /// Jaccard is too low (4/10) but containment is 1.0 → mic copy must drop.
+    func testMergePartialBleedFragmentDropped() {
+        let sys = [TranscriptSegment(meetingId: "m", text: "это мой бренд вижн во всех вещах есть замшевая встав",
+                                     startSeconds: 32, endSeconds: 36, source: .system)]
+        let mic = [TranscriptSegment(meetingId: "m", text: "это мой бренд вижн",
+                                     startSeconds: 32, endSeconds: 34, source: .mic)]
+        let out = TranscriptMerge.merge(mic: mic, system: sys)
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out.first?.source, .system)
+    }
+
+    /// Bleed landing mid-utterance: the system segment STARTS 8s before the mic copy
+    /// (start-to-start distance exceeds the window) but the intervals overlap — the
+    /// mic copy must still drop.
+    func testMergeBleedInsideLongUtteranceDropped() {
+        let sys = [TranscriptSegment(
+            meetingId: "m",
+            text: "вот эта штука и как будто бы это консоль от мира пк гейминга это же счастье "
+                + "но к сожалению кризис памяти много проблем и то что должно было стоить "
+                + "семьсот пятьдесят баксов сейчас стоит тысячу плюс на версию пятьсот двенадцать гигабайт",
+            startSeconds: 34, endSeconds: 58, source: .system
+        )]
+        let mic = [TranscriptSegment(
+            meetingId: "m",
+            text: "но к сожалению кризис памяти много проблем и то что должно было стоить "
+                + "семьсот пятьдесят баксов сейчас стоит тысячу плюс на версию пятьсот двенадцать гигабайт",
+            startSeconds: 42, endSeconds: 56, source: .mic
+        )]
+        let merged = TranscriptMerge.merge(mic: mic, system: sys)
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.source, .system)
+    }
+
+    /// The real leak the exact-token rules missed: the mic heard the SAME audio but
+    /// ASR transcribed variants (окулус/околоса, верность/виар индустрию) → containment
+    /// 9/11 = 0.82 < 0.85. The nested-interval bleed tier (ordered content-word LCS
+    /// 8/10 = 0.8 ≥ 0.65) must drop it.
+    func testMergeBleedAsrVariantInsideUtteranceDropped() {
+        let sys = [TranscriptSegment(
+            meetingId: "m",
+            text: "кто угодно мог вложиться в создание продукта или устройства и лучшие идеи "
+                + "собирали на кикстартере миллионы долларов однако после пары лет очень "
+                + "амбициозных проектов все как то заглохло безусловно кикстартер работает по "
+                + "сей день но таких масштабных стартапов как раньше там уже нет сегодня "
+                + "вспомним три пожалуй главных проекта кикстартер и их амбициозных авторов "
+                + "пал мира лаке подарившего нам околоса фактически всю современную виар индустрию",
+            startSeconds: 4, endSeconds: 28, source: .system
+        )]
+        let mic = [TranscriptSegment(
+            meetingId: "m",
+            text: "пал мира лаке подарившего нам окулус и фактически всю современную верность",
+            startSeconds: 24, endSeconds: 28, source: .mic
+        )]
+        let merged = TranscriptMerge.merge(mic: mic, system: sys)
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.source, .system)
+    }
+
+    /// A genuine user comment reusing the video's topic words must survive: the
+    /// stoplist + 3-char floor collapse it below the bleed tier's 5-content-word gate,
+    /// and set measures stay far under the strict tier.
+    func testMergeKeepsUserCommentWithSameTopicWords() {
+        let sys = [TranscriptSegment(
+            meetingId: "m",
+            text: "кто угодно мог вложиться в создание продукта однако после пары лет очень "
+                + "амбициозных проектов все как то заглохло безусловно кикстартер работает по "
+                + "сей день но таких масштабных стартапов как раньше там уже нет",
+            startSeconds: 4, endSeconds: 28, source: .system
+        )]
+        let mic = [TranscriptSegment(
+            meetingId: "m", text: "ну кикстартер конечно уже не тот как раньше был",
+            startSeconds: 10, endSeconds: 14, source: .mic
+        )]
+        XCTAssertEqual(TranscriptMerge.merge(mic: mic, system: sys).count, 2)
+    }
+
+    /// Heavier ASR divergence (2 of 10 content words replaced) plus mic-only words:
+    /// below both strict measures, still caught by the ordered-LCS bleed tier.
+    func testMergeDivergentBleedDropped() {
+        let sys = [TranscriptSegment(
+            meetingId: "m",
+            text: "коллеги смотрите на графики продаж это было понятно что рынок уже прогрет "
+                + "и вот инвесторы стали уходить оттуда быстрее чем ожидалось при этом наши "
+                + "партнеры сохраняли позиции до конца квартала",
+            startSeconds: 30, endSeconds: 50, source: .system
+        )]
+        let mic = [TranscriptSegment(
+            meetingId: "m",
+            text: "это было понятно что рынок уже перегрет и вот инвесторы стали уходить оттуда быстро господа",
+            startSeconds: 40, endSeconds: 46, source: .mic
+        )]
+        let merged = TranscriptMerge.merge(mic: mic, system: sys)
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.source, .system)
+    }
+
+    /// Dedup is one-directional (mic vs system): repeats WITHIN a source are genuine
+    /// (С2 agreeing with С1 verbatim, the user dictating twice) and must survive.
+    func testMergeSameSourceRepeatsSurvive() {
+        let phrase = "давайте перенесем релиз на пятнадцатое октября"
+        let sys = [seg(phrase, 10, 13), seg(phrase, 14, 17)]
+        XCTAssertEqual(TranscriptMerge.merge(mic: [], system: sys).count, 2)
+        let mic = [
+            TranscriptSegment(meetingId: "m", text: phrase, startSeconds: 10, endSeconds: 13, source: .mic),
+            TranscriptSegment(meetingId: "m", text: phrase, startSeconds: 14, endSeconds: 17, source: .mic)
+        ]
+        XCTAssertEqual(TranscriptMerge.merge(mic: mic, system: []).count, 2)
+    }
+
+    /// Chinese ASR output has no spaces — without CJK bigram tokenization the whole
+    /// sentence is ONE token and every similarity measure reads 0, so zh bleed never
+    /// deduped at all (verified empirically against the shipped framework).
+    func testMergeChineseBleedDropped() {
+        let sys = [TranscriptSegment(
+            meetingId: "m",
+            text: "微软今天发布了全新的人工智能产品这是一个重要的里程碑对整个行业影响深远未来还会有更多创新",
+            startSeconds: 4, endSeconds: 28, source: .system
+        )]
+        let exact = [TranscriptSegment(
+            meetingId: "m", text: "这是一个重要的里程碑对整个行业影响深远",
+            startSeconds: 20, endSeconds: 26, source: .mic
+        )]
+        XCTAssertEqual(TranscriptMerge.merge(mic: exact, system: sys).count, 1)
+        let variant = [TranscriptSegment(
+            meetingId: "m", text: "这是一个重要的里程碑对整个行业影响生远",
+            startSeconds: 20, endSeconds: 26, source: .mic
+        )]
+        XCTAssertEqual(TranscriptMerge.merge(mic: variant, system: sys).count, 1)
+    }
+
+    func testMergeChineseDistinctSpeechKept() {
+        let sys = [TranscriptSegment(
+            meetingId: "m", text: "微软今天发布了全新的人工智能产品这是一个重要的里程碑",
+            startSeconds: 4, endSeconds: 28, source: .system
+        )]
+        let mic = [TranscriptSegment(
+            meetingId: "m", text: "我觉得我们应该先讨论预算问题",
+            startSeconds: 20, endSeconds: 26, source: .mic
+        )]
+        XCTAssertEqual(TranscriptMerge.merge(mic: mic, system: sys).count, 2)
+    }
+
+    func testTokenizeOrderedCJKBigrams() {
+        XCTAssertEqual(TranscriptMerge.tokenizeOrdered("微软发布"), ["微软", "软发", "发布"])
+        XCTAssertEqual(TranscriptMerge.tokenizeOrdered("好"), ["好"])
+        XCTAssertEqual(TranscriptMerge.tokenizeOrdered("买了iPhone很开心"),
+                       ["买了", "iphone", "很开", "开心"])
+        XCTAssertEqual(TranscriptMerge.tokenizeOrdered("привет mir"), ["привет", "mir"])
+    }
+
+    func testLcsLength() {
+        XCTAssertEqual(TranscriptMerge.lcsLength(["a", "b", "c"], ["a", "x", "b", "c"]), 3)
+        XCTAssertEqual(TranscriptMerge.lcsLength(["a", "b"], ["b", "a"]), 1)
+        XCTAssertEqual(TranscriptMerge.lcsLength(["a", "a"], ["a", "a", "a"]), 2)
+        XCTAssertEqual(TranscriptMerge.lcsLength([], ["a"]), 0)
+    }
+
     func testMergeBleedSameTimestampKeepsSystem() {
         let mic = [TranscriptSegment(meetingId: "m", text: "с нефтебазой выезжает бензовоз и привозит топливо",
                                      startSeconds: 10, endSeconds: 14, source: .mic)]

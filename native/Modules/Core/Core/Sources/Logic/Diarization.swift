@@ -24,11 +24,14 @@ public enum DiarizationMap {
     private static let minSignificantSeconds = 3.0
     private static let minSignificantFraction = 0.08
 
-    /// Assigns each `.system` segment an ordinal speaker (1..N by first appearance in
-    /// time) from the SIGNIFICANT turn it overlaps most. Mic/unknown segments are
-    /// untouched. Phantom (tiny/sparse) clusters are ignored. If fewer than 2 significant
-    /// speakers remain, leaves `speaker = 0` (a plain "Собеседник" — numbering one lone
-    /// speaker is noise). No overlap with a significant turn → 0.
+    /// Assigns each `.system` segment an ordinal speaker from the SIGNIFICANT turn it
+    /// overlaps most. Mic/unknown segments are untouched. Phantom (tiny/sparse)
+    /// clusters are ignored. Ordinals are assigned AFTER the segment mapping — 1..N by
+    /// first appearance among clusters that actually WON a transcript segment. A
+    /// significant cluster whose turns never win a segment (a start-of-meeting chime,
+    /// hold music, untranscribed audio) must not consume a number, or users see
+    /// [С2]/[С3] with no [С1]. If fewer than 2 clusters win segments, leaves
+    /// `speaker = 0` (a plain "Собеседник" — numbering one lone speaker is noise).
     public static func assign(_ segments: [TranscriptSegment], turns: [SpeakerTurn]) -> [TranscriptSegment] {
         guard !turns.isEmpty else { return segments }
 
@@ -40,23 +43,27 @@ public enum DiarizationMap {
         let floor = max(minSignificantSeconds, minSignificantFraction * total)
         let significant = Set(durations.filter { $0.value >= floor }.keys)
 
-        var ordinal: [String: Int] = [:]
-        for t in turns.sorted(by: { $0.start < $1.start })
-            where significant.contains(t.rawId) && ordinal[t.rawId] == nil {
-            ordinal[t.rawId] = ordinal.count + 1
-        }
-        let numbered = ordinal.count >= 2
-
-        return segments.map { seg in
-            guard seg.source == .system else { return seg }
+        let winners: [String?] = segments.map { seg in
+            guard seg.source == .system else { return nil }
             var bestId: String?
             var bestOverlap = 0.0
             for t in turns where significant.contains(t.rawId) {
                 let overlap = min(seg.endSeconds, t.end) - max(seg.startSeconds, t.start)
                 if overlap > bestOverlap { bestOverlap = overlap; bestId = t.rawId }
             }
+            return bestId
+        }
+
+        var ordinal: [String: Int] = [:]
+        for i in segments.indices.sorted(by: { segments[$0].startSeconds < segments[$1].startSeconds }) {
+            if let raw = winners[i], ordinal[raw] == nil { ordinal[raw] = ordinal.count + 1 }
+        }
+        let numbered = ordinal.count >= 2
+
+        return zip(segments, winners).map { seg, raw in
+            guard seg.source == .system else { return seg }
             var s = seg
-            s.speaker = (numbered && bestOverlap > 0) ? (ordinal[bestId ?? ""] ?? 0) : 0
+            s.speaker = numbered ? (raw.flatMap { ordinal[$0] } ?? 0) : 0
             return s
         }
     }
