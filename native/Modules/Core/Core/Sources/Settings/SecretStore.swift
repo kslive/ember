@@ -28,6 +28,14 @@ public enum SecretStore {
     private static let migrationLock = NSLock()
     private nonisolated(unsafe) static var migrationAttempted = Set<String>()
 
+    /// Persistent per-account tombstone: after an EXPLICIT delete the keychain
+    /// migration must never resurrect the value on a later launch (a legacy
+    /// keychain item that SecItemDelete failed to remove would otherwise come
+    /// back from the dead). Cleared by the next `set`.
+    private static func tombstoneKey(_ account: String) -> String {
+        "ember.secret.deleted.\(account)"
+    }
+
     public static func get(_ account: String) -> String? {
         if let data = try? Data(contentsOf: fileURL(account)),
            let box = try? AES.GCM.SealedBox(combined: data),
@@ -48,12 +56,14 @@ public enum SecretStore {
         } catch {
             return false
         }
+        UserDefaults.standard.removeObject(forKey: tombstoneKey(account))
         keychainDelete(account)
         return true
     }
 
     @discardableResult
     public static func delete(_ account: String) -> Bool {
+        UserDefaults.standard.set(true, forKey: tombstoneKey(account))
         keychainDelete(account)
         let url = fileURL(account)
         guard FileManager.default.fileExists(atPath: url.path) else { return false }
@@ -95,6 +105,7 @@ public enum SecretStore {
     /// the encrypted file and the keychain item is removed, so that dialog never
     /// returns. One attempt per launch: a denied dialog must not nag every summary.
     private static func migrateFromKeychain(_ account: String) -> String? {
+        guard !UserDefaults.standard.bool(forKey: tombstoneKey(account)) else { return nil }
         migrationLock.lock()
         let seen = migrationAttempted.contains(account)
         if !seen { migrationAttempted.insert(account) }

@@ -13,7 +13,8 @@ public final class SettingsStore: ObservableObject {
     public static let exportFolderKey = "ember.exportFolder"
     public static let micDeviceKey = "ember.micDevice"
     public static let systemDeviceKey = "ember.systemDevice"
-    public static let diarizationKey = "ember.diarization"
+    public static let deferredProcessingKey = "ember.deferredProcessing"
+    public static let summaryTemplateKey = "ember.summaryTemplate"
     public static let calendarTitlesKey = "ember.calendarTitles"
     public static let deepseekModelKey = "ember.deepseekModel"
     private static let deepseekAccount = "deepseek-api-key"
@@ -57,9 +58,16 @@ public final class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(preferredSystemUID, forKey: Self.systemDeviceKey) }
     }
 
-    /// Distinguish different remote voices ("Собеседник 1/2/3") via on-device diarization.
-    @Published public var diarizationEnabled: Bool {
-        didSet { UserDefaults.standard.set(diarizationEnabled, forKey: Self.diarizationKey) }
+    /// Queue heavy post-processing (re-pass + summary) until no
+    /// recording is active — back-to-back calls stay smooth. Default OFF.
+    @Published public var deferredProcessing: Bool {
+        didSet { UserDefaults.standard.set(deferredProcessing, forKey: Self.deferredProcessingKey) }
+    }
+
+    /// Default summary template id ("standard" = built-in). Per-meeting choices
+    /// override this; new meetings inherit it.
+    @Published public var summaryTemplateId: String {
+        didSet { UserDefaults.standard.set(summaryTemplateId, forKey: Self.summaryTemplateKey) }
     }
 
     /// DeepSeek model id chosen from the key's GET /models list ("" = none picked).
@@ -76,7 +84,8 @@ public final class SettingsStore: ObservableObject {
         exportFolderPath = UserDefaults.standard.string(forKey: Self.exportFolderKey) ?? Self.defaultExportFolder()
         preferredMicUID = UserDefaults.standard.string(forKey: Self.micDeviceKey) ?? ""
         preferredSystemUID = UserDefaults.standard.string(forKey: Self.systemDeviceKey) ?? ""
-        diarizationEnabled = (UserDefaults.standard.object(forKey: Self.diarizationKey) as? Bool) ?? true
+        deferredProcessing = (UserDefaults.standard.object(forKey: Self.deferredProcessingKey) as? Bool) ?? false
+        summaryTemplateId = UserDefaults.standard.string(forKey: Self.summaryTemplateKey) ?? SummaryTemplates.standardId
         calendarTitlesEnabled = (UserDefaults.standard.object(forKey: Self.calendarTitlesKey) as? Bool) ?? false
         deepseekModel = UserDefaults.standard.string(forKey: Self.deepseekModelKey) ?? ""
     }
@@ -129,8 +138,13 @@ public final class SettingsStore: ObservableObject {
         (UserDefaults.standard.object(forKey: autoSummaryKey) as? Bool) ?? true
     }
 
-    public static func diarizationOn() -> Bool {
-        (UserDefaults.standard.object(forKey: diarizationKey) as? Bool) ?? true
+    public static func deferredProcessingOn() -> Bool {
+        (UserDefaults.standard.object(forKey: deferredProcessingKey) as? Bool) ?? false
+    }
+
+    public static func currentSummaryTemplateId() -> String {
+        let v = UserDefaults.standard.string(forKey: summaryTemplateKey) ?? ""
+        return v.isEmpty ? SummaryTemplates.standardId : v
     }
 
     /// Preferred microphone device UID, or nil for the system default.
@@ -139,12 +153,16 @@ public final class SettingsStore: ObservableObject {
         return v.isEmpty ? nil : v
     }
 
+    /// `~/Documents/Ember` — a dedicated subfolder, NOT bare Documents: exports
+    /// are laid out in per-day date folders, and sprawling `15.07.2026/` dirs
+    /// directly in the user's Documents root would read as clutter. Only applies
+    /// while the user has never picked a folder; an explicit choice always wins.
     public static func defaultExportFolder() -> String {
         (FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory).path
+            ?? FileManager.default.temporaryDirectory).appendingPathComponent("Ember").path
     }
 
-    /// Chosen export folder (falls back to Documents).
+    /// Chosen export folder (falls back to ~/Documents/Ember).
     public static func exportFolder() -> String {
         let v = UserDefaults.standard.string(forKey: exportFolderKey) ?? ""
         return v.isEmpty ? defaultExportFolder() : v

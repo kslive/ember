@@ -132,7 +132,7 @@ private struct RowPrefix: View {
             .foregroundStyle(EmberColor.text3)
             .padding(.top, 2)
         Group {
-            if let lbl = SpeakerLabel.tag(source: seg.source, speaker: seg.speaker,
+            if let lbl = SpeakerLabel.tag(source: seg.source,
                                           meShort: meShort, themShort: themShort) {
                 Text(lbl).font(EmberType.mono(11)).foregroundStyle(EmberColor.accentText).fixedSize()
             } else {

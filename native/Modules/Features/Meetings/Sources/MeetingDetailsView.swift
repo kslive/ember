@@ -9,7 +9,11 @@ import SwiftUI
 public struct MeetingDetailsView: View {
     @EnvironmentObject private var locale: LocaleManager
     @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var theme: ThemeManager
+    @EnvironmentObject private var templateStore: TemplateStore
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var summarySvc: SummaryService
+    @ObservedObject private var editor: SummaryEditorModel
     private let meeting: Meeting
     private let segments: [TranscriptSegment]
     private let summary: MeetingSummary?
@@ -17,46 +21,152 @@ public struct MeetingDetailsView: View {
     private let progress: ProcessingProgress?
     private let onRegenerate: () -> Void
     private let onRename: (String) -> Void
+    private let onTemplateChange: (String) -> Void
 
     @State private var editingTitle = false
     @State private var titleDraft = ""
     @FocusState private var titleFocused: Bool
     @State private var splitFraction: CGFloat = 1.15 / 2.15
+    @State private var confirmRegenerate = false
+    @State private var editorReady = false
+    @State private var templateOpen = false
     private let minPane: CGFloat = 320
 
     public init(meeting: Meeting, segments: [TranscriptSegment], summary: MeetingSummary?, isProcessing: Bool,
                 progress: ProcessingProgress? = nil,
                 summaryService: SummaryService,
-                onRegenerate: @escaping () -> Void, onRename: @escaping (String) -> Void = { _ in }) {
+                editor: SummaryEditorModel,
+                onRegenerate: @escaping () -> Void, onRename: @escaping (String) -> Void = { _ in },
+                onTemplateChange: @escaping (String) -> Void = { _ in }) {
         self.meeting = meeting
         self.segments = segments
         self.summary = summary
         self.isProcessing = isProcessing
         self.progress = progress
         summarySvc = summaryService
+        self.editor = editor
         self.onRegenerate = onRegenerate
         self.onRename = onRename
+        self.onTemplateChange = onTemplateChange
+    }
+
+    /// The template this meeting's summary belongs to. A recorded id wins. With no
+    /// recorded id: an already-generated summary predates per-meeting templates, so
+    /// it was made with the built-in Standard; only a not-yet-generated meeting
+    /// follows the live global default (what "Generate" will use). This keeps an
+    /// existing summary's picker stable when the global default later changes.
+    private var currentTemplateId: String {
+        if !meeting.templateId.isEmpty { return meeting.templateId }
+        let hasSummary = summary.map { !$0.markdown.isEmpty } ?? false
+        return hasSummary ? SummaryTemplates.standardId : settings.summaryTemplateId
+    }
+
+    private var currentTemplateName: String {
+        templateStore.template(id: currentTemplateId)?.name
+            ?? templateStore.templates.first?.name ?? "Standard"
+    }
+
+    /// Picking a template persists it, then regenerates: silently for AI output,
+    /// with confirmation over hand-edited markdown (same gate as Regenerate).
+    private func changeTemplate(_ id: String) {
+        guard id != currentTemplateId else { return }
+        onTemplateChange(id)
+        guard let s = summary, !s.markdown.isEmpty else { return }
+        let edited = s.editedAt != nil || (editor.everEdited && editor.meetingId == meeting.id)
+        if edited { confirmRegenerate = true } else { onRegenerate() }
+    }
+
+    /// Compact template dropdown for the summary pane header.
+    private var templateChip: some View {
+        Button { templateOpen.toggle() } label: {
+            HStack(spacing: 5) {
+                EmberIcon(.file, size: 12, lineWidth: 1.7, color: EmberColor.text3)
+                Text(currentTemplateName).font(EmberType.medium(12)).foregroundStyle(EmberColor.text2).lineLimit(1)
+                EmberIcon(.chevronRight, size: 11, lineWidth: 2, color: EmberColor.text3).rotationEffect(.degrees(90))
+            }
+            .padding(.horizontal, 10).frame(height: 26)
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(EmberColor.border, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverCursor()
+        .popover(isPresented: $templateOpen, arrowEdge: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(templateStore.templates) { t in
+                        Button { changeTemplate(t.id); templateOpen = false } label: {
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(t.name).font(EmberType.medium(13)).foregroundStyle(EmberColor.text).lineLimit(1)
+                                    if !t.description.isEmpty {
+                                        Text(t.description).font(EmberType.regular(11.5))
+                                            .foregroundStyle(EmberColor.text3).lineLimit(2)
+                                    }
+                                }
+                                Spacer(minLength: 8)
+                                if t.id == currentTemplateId {
+                                    EmberIcon(.check, size: 13, lineWidth: 2, color: EmberColor.accent).padding(.top, 2)
+                                }
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 7).frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain).hoverCursor()
+                    }
+                }
+                .padding(6)
+            }
+            .frame(width: 300).frame(maxHeight: 340)
+        }
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            header
-            GeometryReader { geo in
-                let w = geo.size.width
-                let raw = w * splitFraction
-                let leftW = min(max(raw, minPane), max(minPane, w - minPane))
-                HStack(spacing: 0) {
-                    transcriptPane
-                        .frame(width: leftW)
-                    divider(totalWidth: w)
-                    summaryPane
-                        .frame(maxWidth: .infinity)
+        ZStack {
+            VStack(spacing: 0) {
+                header
+                GeometryReader { geo in
+                    let w = geo.size.width
+                    let raw = w * splitFraction
+                    let leftW = min(max(raw, minPane), max(minPane, w - minPane))
+                    HStack(spacing: 0) {
+                        transcriptPane
+                            .frame(width: leftW)
+                        divider(totalWidth: w)
+                        summaryPane
+                            .frame(maxWidth: .infinity)
+                    }
+                    .coordinateSpace(name: "split")
                 }
-                .coordinateSpace(name: "split")
+            }
+            if confirmRegenerate {
+                EmberDialog(tone: .info, title: locale.t("dialog.regenEdited.title"),
+                            message: locale.t("dialog.regenEdited.msg"),
+                            confirmLabel: locale.t("meeting.regenerate"), cancelLabel: locale.t("common.cancel"),
+                            onConfirm: { confirmRegenerate = false; onRegenerate() },
+                            onCancel: { confirmRegenerate = false })
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(EmberColor.bg)
+    }
+
+    /// The editor is worth showing only when the webview is READY and the current
+    /// meeting's settle window has elapsed — before that the skeleton covers the
+    /// black flash and layout jumps of a freshly pushed document.
+    private var editorVisible: Bool {
+        editorReady && editor.settledId == meeting.id
+    }
+
+    /// Regenerating over hand-edited markdown is data loss — ask first. Pure AI
+    /// output regenerates silently, as before.
+    private func regenerateTapped() {
+        let edited = summary?.editedAt != nil || (editor.everEdited && editor.meetingId == meeting.id)
+        if edited, summary?.markdown.isEmpty == false {
+            confirmRegenerate = true
+        } else {
+            onRegenerate()
+        }
     }
 
     private var header: some View {
@@ -86,7 +196,7 @@ public struct MeetingDetailsView: View {
                 EmberButton(locale.t("meeting.copy"), kind: .secondary, height: 34) {
                     copyToPasteboard()
                 }
-                EmberButton(locale.t("meeting.regenerate"), kind: .primary, height: 34, action: onRegenerate)
+                EmberButton(locale.t("meeting.regenerate"), kind: .primary, height: 34, action: regenerateTapped)
             }
         }
         .padding(.horizontal, 30)
@@ -150,7 +260,7 @@ public struct MeetingDetailsView: View {
                             HStack(alignment: .top, spacing: 6) {
                                 Text(seg.timecode).font(EmberType.mono(12)).foregroundStyle(EmberColor.text3).padding(.top, 2)
                                 Group {
-                                    if let lbl = SpeakerLabel.tag(source: seg.source, speaker: seg.speaker,
+                                    if let lbl = SpeakerLabel.tag(source: seg.source,
                                                                   meShort: locale.t("speaker.me.short"),
                                                                   themShort: locale.t("speaker.them.short")) {
                                         Text(lbl).font(EmberType.mono(11)).foregroundStyle(EmberColor.accentText).fixedSize()
@@ -184,7 +294,8 @@ public struct MeetingDetailsView: View {
             if let progress {
                 VStack(spacing: 9) {
                     if progress.total > 1 {
-                        Text(locale.t("processing.step", ["n": "\(progress.step)", "t": "\(progress.total)"]))
+                        Text(locale.t(progress.stage == .queued ? "processing.queuePosition" : "processing.step",
+                                      ["n": "\(progress.step)", "t": "\(progress.total)"]))
                             .font(EmberType.mono(10.5)).tracking(1.2)
                             .foregroundStyle(EmberColor.text3)
                             .textCase(.uppercase)
@@ -215,24 +326,41 @@ public struct MeetingDetailsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 summaryLabel
                     .padding(.horizontal, 30).padding(.top, 24).padding(.bottom, 18)
-                ScrollView {
-                    SummaryMarkdownView(md: summary.markdown)
-                        .equatable()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 30)
-                        .padding(.bottom, 24)
+                ZStack {
+                    SummaryWebEditorView(
+                        text: $editor.text,
+                        themeJSON: SummaryWebEditorView.themeJSON(isDark: colorScheme == .dark),
+                        controller: editor.controller,
+                        onOpenLink: openExternalLink,
+                        onFlushDoc: { editor.flushNow() },
+                        onReady: { editorReady = true }
+                    )
+                    .opacity(editorVisible ? 1 : 0)
+                    if !editorVisible {
+                        SummarySkeleton()
+                            .padding(.horizontal, 16)
+                    }
                 }
-                .scrollIndicators(.never)
+                .padding(.horizontal, 14)
+                .task(id: meeting.id) {
+                    editorReady = editor.controller.isReady
+                    // Hold the shimmer for a fixed settle window on EVERY open —
+                    // a warm webview still repaints the fresh document (~0.5s of
+                    // black + layout jumps) before it is worth showing.
+                    guard editor.settledId != meeting.id else { return }
+                    try? await Task.sleep(nanoseconds: 550_000_000)
+                    editor.settledId = meeting.id
+                }
                 Rectangle().fill(EmberColor.border).frame(height: 1)
                 HStack(spacing: 14) {
                     Text(locale.t("meeting.savedMd")).font(EmberType.regular(12)).foregroundStyle(EmberColor.text3)
                         .lineLimit(1)
                     Spacer()
                     if SageIntegration.isInstalled {
-                        SageGlowButton(locale.t("meeting.openSage")) { openInSage(summary.markdown) }
+                        SageGlowButton(locale.t("meeting.openSage")) { openInSage(currentMarkdown) }
                             .layoutPriority(1)
                     } else {
-                        Button(action: { openInObsidian(summary.markdown) }, label: {
+                        Button(action: { openInObsidian(currentMarkdown) }, label: {
                             Text(locale.t("meeting.openObsidian")).font(EmberType.medium(12.5)).foregroundStyle(EmberColor.accentText)
                                 .contentShape(Rectangle())
                         })
@@ -254,6 +382,8 @@ public struct MeetingDetailsView: View {
                 EmberButton(locale.t("meeting.generate"), kind: .primary, height: 46, action: onRegenerate)
                     .frame(maxWidth: 320)
                     .padding(.top, 2)
+                templateChip
+                    .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(40)
@@ -267,7 +397,8 @@ public struct MeetingDetailsView: View {
             .padding(.bottom, 18)
     }
 
-    /// Summary section label with a continuously-pulsing accent sparkle.
+    /// Summary section label with a continuously-pulsing accent sparkle + the
+    /// per-meeting template picker on the right.
     private var summaryLabel: some View {
         HStack(spacing: 7) {
             EmberIcon(.sparkle, size: 13, lineWidth: 1.7, color: EmberColor.accentText)
@@ -275,6 +406,8 @@ public struct MeetingDetailsView: View {
             Text(locale.t("meeting.summary"))
                 .font(EmberType.mono(10.5)).tracking(1.26).textCase(.uppercase)
                 .foregroundStyle(EmberColor.text3)
+            Spacer(minLength: 12)
+            templateChip
         }
     }
 
@@ -284,18 +417,33 @@ public struct MeetingDetailsView: View {
         NSPasteboard.general.setString(text, forType: .string)
     }
 
+    /// The live editor draft when it is bound to THIS meeting; the stored
+    /// markdown otherwise (container snapshot may lag behind typing).
+    private var currentMarkdown: String {
+        editor.meetingId == meeting.id && !editor.text.isEmpty ? editor.text : (summary?.markdown ?? "")
+    }
+
+    /// Only genuinely external links leave the app; everything else is inert.
+    private func openExternalLink(_ href: String) {
+        guard let url = URL(string: href),
+              ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     /// Writes the summary .md into the chosen export folder, then opens THAT file in
     /// Obsidian by path (not a throwaway new note). Falls back to the default app.
     /// Writes the export .md (same file the Obsidian flow uses) and deep-links it
     /// into Sage (`sage://open?path=…`).
     private func openInSage(_ md: String) {
+        editor.flushNow()
         guard let url = SummaryExport.write(markdown: md, title: meeting.title, createdAt: meeting.createdAt,
                                             typeLabel: locale.t("meeting.exportType"),
                                             folder: settings.exportFolderPath) else { return }
-        SageIntegration.open(file: url)
+        SageIntegration.open(file: url, root: settings.exportFolderPath)
     }
 
     private func openInObsidian(_ md: String) {
+        editor.flushNow()
         guard let url = SummaryExport.write(markdown: md, title: meeting.title, createdAt: meeting.createdAt,
                                             typeLabel: locale.t("meeting.exportType"),
                                             folder: settings.exportFolderPath) else { return }

@@ -35,14 +35,14 @@ public struct OnboardingView: View {
                 case .welcome: centered(maxWidth: 440) { welcomeStep }
                 case .summary:
                     modelStep(badge: stepLabel(2), title: locale.t("onb.summary.title"), subtitle: locale.t("onb.summary.subtitle"),
-                              cards: summaryCards, stateFor: summaryCardState, action: summaryAction, errorFor: summaryError,
+                              groups: summaryCardGroups, stateFor: summaryCardState, action: summaryAction, errorFor: summaryError,
                               back: { goBack(to: .welcome) { summary.cancelAllDownloads() } },
                               nextTitle: locale.t("common.next"), finish: false,
                               nextEnabled: summary.states[settings.summaryModelId] == .ready,
                               next: { advance(to: .whisper) })
                 case .whisper:
                     modelStep(badge: stepLabel(3), title: locale.t("onb.whisper.title"), subtitle: locale.t("onb.whisper.subtitle"),
-                              cards: whisperCards, stateFor: whisperCardState, action: whisperAction, errorFor: whisperError,
+                              groups: whisperCardGroups, stateFor: whisperCardState, action: whisperAction, errorFor: whisperError,
                               back: { goBack(to: .summary) { transcription.cancelAllDownloads() } },
                               nextTitle: locale.t("common.done"), finish: true,
                               nextEnabled: transcription.states[settings.whisperModelId] == .ready,
@@ -184,9 +184,10 @@ public struct OnboardingView: View {
     }
 
     struct CardVM: Identifiable { let id: String; let name: String; let desc: String; let meta: String; let badge: String?; let sizeMB: Int }
+    struct CardGroup { let title: String; let cards: [CardVM] }
 
     private func modelStep(badge: String, title: String, subtitle: String,
-                           cards: [CardVM], stateFor: @escaping (String) -> ModelCardState, action: @escaping (CardVM) -> Void,
+                           groups: [CardGroup], stateFor: @escaping (String) -> ModelCardState, action: @escaping (CardVM) -> Void,
                            errorFor: @escaping (String) -> String?,
                            back: @escaping () -> Void, nextTitle: String, finish: Bool, nextEnabled: Bool, next: @escaping () -> Void) -> some View {
         VStack(spacing: 0) {
@@ -195,11 +196,17 @@ public struct OnboardingView: View {
                 Text(title).font(EmberType.semibold(28)).tracking(-0.56).foregroundStyle(EmberColor.text).padding(.top, 12)
                 Text(subtitle).font(EmberType.regular(14.5)).lineSpacing(3).foregroundStyle(EmberColor.text2).padding(.top, 8).padding(.bottom, 28)
                 ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(cards) { c in
-                            EmberModelCard(name: c.name, desc: c.desc, meta: c.meta, badge: c.badge,
-                                           state: stateFor(c.id), totalMB: c.sizeMB, errorText: errorFor(c.id),
-                                           onAction: { action(c) })
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(groups, id: \.title) { g in
+                            Text(g.title)
+                                .font(EmberType.mono(10.5)).tracking(1.2).textCase(.uppercase)
+                                .foregroundStyle(EmberColor.text3)
+                                .padding(.top, 4)
+                            ForEach(g.cards) { c in
+                                EmberModelCard(name: c.name, desc: c.desc, meta: c.meta, badge: c.badge,
+                                               state: stateFor(c.id), totalMB: c.sizeMB, errorText: errorFor(c.id),
+                                               onAction: { action(c) })
+                            }
                         }
                     }
                 }
@@ -270,22 +277,27 @@ public struct OnboardingView: View {
         onComplete()
     }
 
-    private var summaryCards: [CardVM] {
-        SummaryCatalog.all.map { m in
-            CardVM(id: m.id, name: m.displayName,
-                   desc: (m.noteKey.map { locale.t($0) + " · " } ?? "")
-                       + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
-                   meta: "\(m.sizeMB) \(sizeUnit) · \(m.contextTokens) \(locale.t("model.tokens"))", badge: badgeText(m.badge), sizeMB: m.sizeMB)
+    private var summaryCardGroups: [CardGroup] {
+        SummaryCatalog.groups.map { g in
+            CardGroup(title: locale.t(g.titleKey), cards: g.models.map { m in
+                CardVM(id: m.id, name: m.displayName,
+                       desc: (m.noteKey.map { locale.t($0) + " · " } ?? "")
+                           + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
+                       meta: "\(m.sizeMB) \(sizeUnit) · \(m.contextTokens) \(locale.t("model.tokens"))",
+                       badge: badgeText(m.badge), sizeMB: m.sizeMB)
+            })
         }
     }
 
-    private var whisperCards: [CardVM] {
-        TranscriptionCatalog.all.map { m in
-            CardVM(id: m.id, name: m.displayName,
-                   desc: m.engine == .gigaAM
-                       ? locale.t("model.gigaam.desc") + " · " + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"])
-                       : locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
-                   meta: "\(m.sizeMB) \(sizeUnit)", badge: badgeText(m.badge), sizeMB: m.sizeMB)
+    private var whisperCardGroups: [CardGroup] {
+        TranscriptionCatalog.groups.map { g in
+            CardGroup(title: locale.t(g.titleKey), cards: g.models.map { m in
+                CardVM(id: m.id, name: m.displayName,
+                       desc: m.engine == .gigaAM
+                           ? locale.t("model.gigaam.desc") + " · " + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"])
+                           : locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
+                       meta: "\(m.sizeMB) \(sizeUnit)", badge: badgeText(m.badge), sizeMB: m.sizeMB)
+            })
         }
     }
 

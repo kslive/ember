@@ -33,6 +33,7 @@ struct EmberApp: App {
     @StateObject private var theme = ThemeManager()
     @StateObject private var settings = SettingsStore()
     @StateObject private var updater = UpdaterService()
+    @StateObject private var templates = TemplateStore()
     @StateObject private var model = AppModel()
     @AppStorage("ember.onboarded") private var onboarded = false
 
@@ -55,10 +56,12 @@ struct EmberApp: App {
             .environmentObject(theme)
             .environmentObject(settings)
             .environmentObject(updater)
+            .environmentObject(templates)
             .preferredColorScheme(theme.theme.colorScheme)
             .id(theme.accentId)
             .frame(minWidth: 920, minHeight: 600)
             .task { if onboarded { updater.checkInBackground() } }
+            .onChange(of: locale.language) { _, _ in templates.reload() }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)

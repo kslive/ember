@@ -8,8 +8,8 @@ let baseSettings: SettingsDictionary = [
     "DEVELOPMENT_TEAM": "",
     "ENABLE_HARDENED_RUNTIME": "YES",
     "SWIFT_VERSION": "5.0",
-    "MARKETING_VERSION": "1.5.3",
-    "CURRENT_PROJECT_VERSION": "13",
+    "MARKETING_VERSION": "1.6.0",
+    "CURRENT_PROJECT_VERSION": "14",
     "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
 ]
 
@@ -58,10 +58,6 @@ let persistenceService = mod("PersistenceService", path: "Modules/Services/Persi
 let updaterService = mod("UpdaterService", path: "Modules/Services/Updater", deps: [
     .target(name: "Core"),
 ])
-let diarizationService = mod("DiarizationService", path: "Modules/Services/Diarization", deps: [
-    .target(name: "Core"), .external(name: "FluidAudio"),
-])
-
 let onboardingFeature = mod("OnboardingFeature", path: "Modules/Features/Onboarding", deps: [
     .target(name: "Core"), .target(name: "DesignSystem"),
     .target(name: "TranscriptionService"), .target(name: "SummaryService"),
@@ -73,7 +69,7 @@ let recordingFeature = mod("RecordingFeature", path: "Modules/Features/Recording
 let meetingsFeature = mod("MeetingsFeature", path: "Modules/Features/Meetings", deps: [
     .target(name: "Core"), .target(name: "DesignSystem"),
     .target(name: "PersistenceService"), .target(name: "SummaryService"),
-])
+], hasResources: true)
 let settingsFeature = mod("SettingsFeature", path: "Modules/Features/Settings", deps: [
     .target(name: "Core"), .target(name: "DesignSystem"),
     .target(name: "TranscriptionService"), .target(name: "SummaryService"), .target(name: "UpdaterService"),
@@ -136,7 +132,6 @@ let app = Target.target(
         .target(name: "SummaryService"),
         .target(name: "PersistenceService"),
         .target(name: "UpdaterService"),
-        .target(name: "DiarizationService"),
         .target(name: "OnboardingFeature"),
         .target(name: "RecordingFeature"),
         .target(name: "MeetingsFeature"),
@@ -160,6 +155,7 @@ let tests = Target.target(
         .target(name: "TranscriptionService"),
         .target(name: "CallDetectService"),
         .target(name: "AudioService"),
+        .target(name: "MeetingsFeature"),
         .external(name: "WhisperKit"),
     ],
     settings: .settings(base: baseSettings)
@@ -172,7 +168,6 @@ let project = Project(
     targets: [
         core, designSystem,
         audioService, callDetectService, transcriptionService, summaryService, persistenceService, updaterService,
-        diarizationService,
         onboardingFeature, recordingFeature, meetingsFeature, settingsFeature,
         app, tests,
     ],

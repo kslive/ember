@@ -242,6 +242,21 @@ public final class TranscriptionService: ObservableObject {
     /// Called IMMEDIATELY after each session's final pass — the model (1.5–2+ GB)
     /// must not stay resident between meetings; the next recording reloads it in
     /// seconds. No-op while actively transcribing.
+    /// Deferred-processing interrupt: a call just started — INTERRUPTIBLE passes
+    /// (the final re-pass) stop mid-flight: WhisperKit via its per-window callback,
+    /// GigaAM between chunks. Live-loop calls are NOT interruptible and neither
+    /// honor nor touch the flag — live transcription must keep running during the
+    /// very call that triggered the abort. Cleared explicitly at job start.
+    public private(set) nonisolated(unsafe) var abortRequested = false
+
+    public nonisolated func requestAbort() {
+        abortRequested = true
+    }
+
+    public nonisolated func clearAbort() {
+        abortRequested = false
+    }
+
     public func unload() {
         if case .transcribing = status { return }
         kit = nil
@@ -256,12 +271,28 @@ public final class TranscriptionService: ObservableObject {
     /// uses `strict: false` — those thresholds make WhisperKit return NOTHING on the
     /// short 1.8s growing-window clips; live relies on the caller's RMS gate to skip
     /// silence instead. The FINAL pass (long audio) uses `strict: true`.
-    public func transcribeSamples(_ samples: [Float], meetingId: String, language: String?, strict: Bool = false) async -> [TranscriptSegment] {
+    public func transcribeSamples(_ samples: [Float], meetingId: String, language: String?, strict: Bool = false,
+                                  interruptible: Bool = false) async -> [TranscriptSegment] {
         guard !samples.isEmpty else { return [] }
-        if let giga { return await Self.transcribeGiga(giga, samples: samples, meetingId: meetingId) }
+        if let giga {
+            let shouldAbort: @Sendable () -> Bool = if interruptible {
+                { [weak self] in self?.abortRequested ?? false }
+            } else {
+                { false }
+            }
+            return await Self.transcribeGiga(giga, samples: samples, meetingId: meetingId, shouldAbort: shouldAbort)
+        }
         guard let kit else { return [] }
         do {
-            let results = try await kit.transcribe(audioArray: samples, decodeOptions: Self.decodeOptions(language: language, strict: strict))
+            var stop: TranscriptionCallback = nil
+            if interruptible {
+                stop = { [weak self] _ in (self?.abortRequested ?? false) ? false : nil }
+            }
+            let results: [TranscriptionResult] = try await kit.transcribe(
+                audioArray: samples,
+                decodeOptions: Self.decodeOptions(language: language, strict: strict),
+                callback: stop
+            )
             let segs = results.flatMap(\.segments).compactMap { s -> TranscriptSegment? in
                 let text = Self.cleanText(s.text)
                 guard Self.hasSpeech(text), !Self.isHallucination(text) else { return nil }
@@ -323,10 +354,12 @@ public final class TranscriptionService: ObservableObject {
     /// split every chunk into UTTERANCES at inter-token pauses. One coarse segment
     /// per 25s chunk made speaker diarization useless (a segment can carry only
     /// one speaker label); utterance-level segments restore per-phrase labels.
-    private nonisolated static func transcribeGiga(_ box: GigaBox, samples: [Float], meetingId: String) async -> [TranscriptSegment] {
+    private nonisolated static func transcribeGiga(_ box: GigaBox, samples: [Float], meetingId: String,
+                                                   shouldAbort: @escaping @Sendable () -> Bool = { false }) async -> [TranscriptSegment] {
         await Task.detached(priority: .userInitiated) {
             var segs: [TranscriptSegment] = []
             for chunk in Self.gigaChunks(samples) {
+                if shouldAbort() { break }
                 let decoded = box.decode(chunk.samples)
                 let base = Double(chunk.offset) / 16000.0
                 let chunkEnd = Double(chunk.offset + chunk.samples.count) / 16000.0

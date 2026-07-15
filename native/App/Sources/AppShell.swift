@@ -166,7 +166,8 @@ struct AppShell: View {
                 emptyPane
             }
         case .settings:
-            SettingsView(transcription: model.transcription, summary: model.summary)
+            SettingsView(transcription: model.transcription, summary: model.summary,
+                         onToast: { model.showToast($0, tone: $1) })
         }
     }
 
@@ -194,12 +195,18 @@ private struct MeetingDetailContainer: View {
             isProcessing: model.isProcessing(meeting.id),
             progress: model.processingStages[meeting.id],
             summaryService: model.summary,
+            editor: model.summaryEditor,
             onRegenerate: { model.regenerate(meetingId: meeting.id) },
-            onRename: { model.rename(meeting.id, to: $0) }
+            onRename: { model.rename(meeting.id, to: $0) },
+            onTemplateChange: { model.setMeetingTemplate(meeting.id, templateId: $0) }
         )
         .task(id: "\(meeting.id)#\(model.revision)") {
             segments = model.store.transcript(meetingId: meeting.id)
             summary = model.store.summary(meetingId: meeting.id)
+            if let s = summary, !s.markdown.isEmpty {
+                model.summaryEditor.open(meetingId: meeting.id, markdown: s.markdown,
+                                         fileURL: model.exportedSummaryURL(for: meeting))
+            }
         }
     }
 }

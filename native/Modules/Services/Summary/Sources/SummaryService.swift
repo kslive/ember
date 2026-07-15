@@ -120,6 +120,15 @@ public final class SummaryService: ObservableObject {
         MLX.Memory.clearCache()
     }
 
+    /// Deferred-processing interrupt: a call just started — stop generating NOW
+    /// (checked between tokens inside the detached MLX loop; plain bool read is
+    /// benign cross-thread). Reset at the start of every `summarize`.
+    public private(set) nonisolated(unsafe) var abortRequested = false
+
+    public nonisolated func requestAbort() {
+        abortRequested = true
+    }
+
     public func ensureLoaded(repoId: String) async {
         if loadedRepo == repoId, container != nil { return }
         status = .loading
@@ -164,11 +173,16 @@ public final class SummaryService: ObservableObject {
     /// transcript that wouldn't fit the model's context is summarized in chunks
     /// (map) then reduced — otherwise the KV cache would silently drop the middle
     /// of the meeting (the smallest-context model, 8B/16k, is hit first).
-    public func summarize(transcript: String, languageCode: String) async -> String {
+    public func summarize(transcript: String, languageCode: String, systemOverride: String? = nil) async -> String {
         guard container != nil else { return "" }
         status = .generating
+        abortRequested = false
         defer { MLX.Memory.clearCache() }
 
+        // The chosen template replaces ONLY the write/reduce system prompt; the facts
+        // extraction + chunk passes stay on the code prompts (grounding is template-
+        // independent). nil → the built-in default.
+        let writeSystem = systemOverride ?? SummaryPrompts.system(language: languageCode)
         let maxGen = 6144
         let budgetTokens = Self.promptBudgetTokens(context: loadedContextTokens, maxGen: maxGen)
         let budgetChars = budgetTokens * 2
@@ -184,7 +198,7 @@ public final class SummaryService: ObservableObject {
             )
             let facts = SummaryGrounding.verifiedFacts(ThinkStripper.strip(factsRaw), transcript: transcript)
             raw = await generateOnce(
-                system: SummaryPrompts.system(language: languageCode),
+                system: writeSystem,
                 userPrompt: SummaryPrompts.user(transcript: transcript, facts: facts, roster: roster,
                                                 numbers: numbers, language: languageCode),
                 maxTokens: maxGen
@@ -192,7 +206,7 @@ public final class SummaryService: ObservableObject {
         } else {
             var notes: [String] = []
             for chunk in Self.splitChunks(transcript, maxChars: budgetChars) {
-                if Task.isCancelled { break }
+                if Task.isCancelled || abortRequested { break }
                 if ProcessInfo.processInfo.thermalState == .serious
                     || ProcessInfo.processInfo.thermalState == .critical {
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -206,13 +220,17 @@ public final class SummaryService: ObservableObject {
                 if !verified.isEmpty { notes.append(verified) }
             }
             raw = notes.isEmpty ? "" : await generateOnce(
-                system: SummaryPrompts.system(language: languageCode),
+                system: writeSystem,
                 userPrompt: SummaryPrompts.user(transcript: notes.joined(separator: "\n"), facts: "",
                                                 roster: roster, numbers: numbers, language: languageCode),
                 maxTokens: maxGen
             )
         }
 
+        if abortRequested {
+            status = container != nil ? .ready : .idle
+            return ""
+        }
         guard !raw.isEmpty else {
             if case .error = status {} else { status = .error("empty") }
             return ""
@@ -224,13 +242,14 @@ public final class SummaryService: ObservableObject {
     /// Cloud (DeepSeek) summary path — same prompts, no local models touched. Throws
     /// on ANY failure so the caller falls back to the local MLX path. DeepSeek's 1M
     /// context fits any meeting in one pass (400k-char cap is a safety net only).
-    public func summarizeCloud(key: String, model: String, transcript: String, languageCode: String) async throws -> String {
+    public func summarizeCloud(key: String, model: String, transcript: String, languageCode: String,
+                               systemOverride: String? = nil) async throws -> String {
         status = .generating
         defer { if case .generating = status { status = container != nil ? .ready : .idle } }
         let capped = String(transcript.suffix(400_000))
         let raw = try await DeepSeekClient.chat(
             key: key, model: model,
-            system: SummaryPrompts.system(language: languageCode),
+            system: systemOverride ?? SummaryPrompts.system(language: languageCode),
             user: SummaryPrompts.user(transcript: capped, facts: "",
                                       roster: SummaryGrounding.roster(fromTranscript: capped),
                                       numbers: SummaryGrounding.keyNumbers(fromTranscript: capped),
@@ -281,6 +300,7 @@ public final class SummaryService: ObservableObject {
                     for await generation in try MLXLMCommon.generate(
                         input: input, parameters: params, context: ctx
                     ) {
+                        if self.abortRequested { break }
                         if let piece = generation.chunk { text += piece }
                     }
                     return text

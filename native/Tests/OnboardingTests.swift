@@ -69,6 +69,23 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(rams, rams.sorted(), "summary models must be sorted by RAM ascending")
     }
 
+    /// Every catalog model must land in exactly ONE picker group — a model
+    /// missing from the partition silently vanishes from onboarding/settings.
+    func testCatalogGroupsPartitionAll() {
+        let sumGrouped = SummaryCatalog.groups.flatMap(\.models).map(\.id)
+        XCTAssertEqual(sumGrouped.sorted(), SummaryCatalog.all.map(\.id).sorted())
+        XCTAssertEqual(Set(sumGrouped).count, sumGrouped.count)
+        let trGrouped = TranscriptionCatalog.groups.flatMap(\.models).map(\.id)
+        XCTAssertEqual(trGrouped.sorted(), TranscriptionCatalog.all.map(\.id).sorted())
+        XCTAssertEqual(Set(trGrouped).count, trGrouped.count)
+        for g in SummaryCatalog.groups {
+            XCTAssertFalse(g.models.isEmpty)
+        }
+        for g in TranscriptionCatalog.groups {
+            XCTAssertFalse(g.models.isEmpty)
+        }
+    }
+
     func testTranscriptionCatalog() {
         XCTAssertEqual(TranscriptionCatalog.defaultId, "openai_whisper-large-v3_turbo")
         XCTAssertNotNil(TranscriptionCatalog.spec(for: TranscriptionCatalog.defaultId))

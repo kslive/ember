@@ -55,8 +55,41 @@ public enum AudioMixer {
         return out
     }
 
+    /// Writes 16 kHz mono Float32 samples to a CAF file (chunked). Used by the
+    /// deferred-processing queue to spill the ALIGNED live accumulators to disk —
+    /// the engine's own 48k .caf files are plain concatenations without the
+    /// host-time silence padding, so re-passing from them would break timecodes.
+    /// Returns nil on failure or empty input.
+    @discardableResult
+    public static func writeSamples16k(_ samples: [Float], to url: URL) -> URL? {
+        guard !samples.isEmpty else { return nil }
+        try? FileManager.default.removeItem(at: url)
+        guard let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sr, channels: 1, interleaved: false),
+              let file = try? AVAudioFile(forWriting: url, settings: fmt.settings, commonFormat: .pcmFormatFloat32,
+                                          interleaved: false)
+        else { return nil }
+        let chunk = 65536
+        var i = 0
+        while i < samples.count {
+            let end = min(i + chunk, samples.count)
+            let cnt = AVAudioFrameCount(end - i)
+            guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: cnt) else { return nil }
+            buf.frameLength = cnt
+            if let ch = buf.floatChannelData?[0] {
+                samples.withUnsafeBufferPointer { p in
+                    for k in 0 ..< Int(cnt) {
+                        ch[k] = p[i + k]
+                    }
+                }
+            }
+            do { try file.write(from: buf) } catch { return nil }
+            i = end
+        }
+        return url
+    }
+
     /// Decodes any audio file to a 16 kHz mono float array.
-    private static func decode16kMono(_ url: URL) -> [Float]? {
+    public static func decode16kMono(_ url: URL) -> [Float]? {
         guard FileManager.default.fileExists(atPath: url.path),
               let file = try? AVAudioFile(forReading: url) else { return nil }
         let inFmt = file.processingFormat
@@ -64,17 +97,45 @@ public enum AudioMixer {
               let conv = AVAudioConverter(from: inFmt, to: outFmt) else { return nil }
         let frames = AVAudioFrameCount(file.length)
         guard frames > 0, let inBuf = AVAudioPCMBuffer(pcmFormat: inFmt, frameCapacity: frames) else { return nil }
-        do { try file.read(into: inBuf) } catch { return nil }
+        // Read in a LOOP: a single read(into:) can return fewer frames than the
+        // buffer capacity (observed 15360 of 16000 on a plain CAF) — stopping there
+        // silently truncated the tail.
+        inBuf.frameLength = 0
+        while file.framePosition < file.length {
+            guard let tmp = AVAudioPCMBuffer(pcmFormat: inFmt, frameCapacity: 65536) else { return nil }
+            do { try file.read(into: tmp) } catch { return nil }
+            if tmp.frameLength == 0 { break }
+            let dst = Int(inBuf.frameLength)
+            for c in 0 ..< Int(inFmt.channelCount) {
+                if let src = tmp.floatChannelData?[c], let out = inBuf.floatChannelData?[c] {
+                    memcpy(out + dst, src, Int(tmp.frameLength) * MemoryLayout<Float>.size)
+                }
+            }
+            inBuf.frameLength += tmp.frameLength
+        }
+        guard inBuf.frameLength > 0 else { return nil }
         let cap = AVAudioFrameCount(Double(frames) * sr / inFmt.sampleRate + 1024)
         guard let outBuf = AVAudioPCMBuffer(pcmFormat: outFmt, frameCapacity: cap) else { return nil }
         var done = false
         var err: NSError?
-        conv.convert(to: outBuf, error: &err) { _, status in
-            if done { status.pointee = .noDataNow; return nil }
-            done = true; status.pointee = .haveData; return inBuf
+        var out: [Float] = []
+        out.reserveCapacity(Int(cap))
+        // Loop until .endOfStream: the converter hands out its internal tail only on
+        // the convert call AFTER the input block signals end-of-stream — a single
+        // call silently swallowed the last ~40ms of every decoded file.
+        while true {
+            outBuf.frameLength = 0
+            let st = conv.convert(to: outBuf, error: &err) { _, status in
+                if done { status.pointee = .endOfStream; return nil }
+                done = true; status.pointee = .haveData; return inBuf
+            }
+            guard err == nil else { return nil }
+            if let ch = outBuf.floatChannelData?[0], outBuf.frameLength > 0 {
+                out.append(contentsOf: UnsafeBufferPointer(start: ch, count: Int(outBuf.frameLength)))
+            }
+            if st == .endOfStream || st == .error || outBuf.frameLength == 0 { break }
         }
-        guard err == nil, let ch = outBuf.floatChannelData?[0] else { return nil }
-        return Array(UnsafeBufferPointer(start: ch, count: Int(outBuf.frameLength)))
+        return out
     }
 
     private static func encodeM4A(_ samples: [Float], to url: URL) -> Bool {

@@ -10,16 +10,21 @@ final class SummaryExportTests: XCTestCase {
 
     func testFileNameFromTitle() {
         XCTAssertEqual(SummaryExport.fileName(title: "Планёрка по релизу", createdAt: date(2026, 6, 1, 10, 0)),
-                       "2026-06-01 — Планёрка по релизу.md")
+                       "Планёрка по релизу.md")
     }
 
     func testFileNameSanitizesIllegalChars() {
         XCTAssertEqual(SummaryExport.fileName(title: "a/b:c*d?", createdAt: date(2026, 6, 1, 10, 0)),
-                       "2026-06-01 — a-b-c-d-.md")
+                       "a-b-c-d-.md")
     }
 
-    func testFileNameEmptyFallsBackToDate() {
-        XCTAssertEqual(SummaryExport.fileName(title: "   ", createdAt: date(2026, 6, 1, 9, 7)), "2026-06-01-09-07.md")
+    func testFileNameEmptyFallsBackToTime() {
+        XCTAssertEqual(SummaryExport.fileName(title: "   ", createdAt: date(2026, 6, 1, 9, 7)), "09-07.md")
+    }
+
+    func testDateFolderFormat() {
+        XCTAssertEqual(SummaryExport.dateFolder(createdAt: date(2026, 2, 1, 10, 0)), "01.02.2026")
+        XCTAssertEqual(SummaryExport.dateFolder(createdAt: date(2026, 12, 31, 0, 0)), "31.12.2026")
     }
 
     func testFrontMatterContainsYAMLAndBody() {
@@ -32,13 +37,15 @@ final class SummaryExportTests: XCTestCase {
         XCTAssertTrue(fm.contains("# Тема"))
     }
 
-    func testWriteCreatesFile() {
+    func testWriteCreatesFileInDateSubfolder() {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ember-export-\(UUID().uuidString)")
         let url = SummaryExport.write(markdown: "# X\nbody", title: "X", createdAt: date(2026, 6, 1, 10, 0),
                                       typeLabel: "Meeting", folder: dir.path)
         XCTAssertNotNil(url)
         if let url {
-            XCTAssertEqual(url.lastPathComponent, "2026-06-01 — X.md")
+            XCTAssertEqual(url.lastPathComponent, "X.md")
+            XCTAssertEqual(url.deletingLastPathComponent().lastPathComponent, "01.06.2026")
+            XCTAssertEqual(url.deletingLastPathComponent().deletingLastPathComponent().path, dir.path)
             XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
             let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
             XCTAssertTrue(content.contains("tags: [meeting]"))

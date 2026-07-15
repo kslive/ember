@@ -75,6 +75,16 @@ public final class MeetingStore: ObservableObject {
                 t.add(column: "speaker", .integer).notNull().defaults(to: 0)
             }
         }
+        migrator.registerMigration("v4-summary-editedat") { db in
+            try db.alter(table: "summary") { t in
+                t.add(column: "editedAt", .double)
+            }
+        }
+        migrator.registerMigration("v5-meeting-template") { db in
+            try db.alter(table: "meeting") { t in
+                t.add(column: "templateId", .text).notNull().defaults(to: "")
+            }
+        }
         try migrator.migrate(dbQueue)
     }
 
@@ -96,6 +106,19 @@ public final class MeetingStore: ObservableObject {
                            arguments: [title, Date().timeIntervalSince1970, id])
         }
         reload()
+    }
+
+    /// Persists the chosen summary template for a meeting (drives regeneration and
+    /// which template its detail view shows).
+    public func setMeetingTemplate(_ id: String, templateId: String) {
+        try? dbQueue.write { db in
+            try db.execute(sql: "UPDATE meeting SET templateId = ? WHERE id = ?", arguments: [templateId, id])
+        }
+        reload()
+    }
+
+    public func meeting(_ id: String) -> Meeting? {
+        try? dbQueue.read { db in try MeetingRow.fetchOne(db, key: id) }?.model
     }
 
     public func delete(_ id: String) {
@@ -155,6 +178,7 @@ private struct MeetingRow: Codable, FetchableRecord, PersistableRecord {
     var duration: Double?
     var participants: Int?
     var folderPath: String?
+    var templateId: String
 
     init(_ m: Meeting) {
         id = m.id; title = m.title
@@ -163,13 +187,15 @@ private struct MeetingRow: Codable, FetchableRecord, PersistableRecord {
         duration = m.durationSeconds
         participants = m.participantCount
         folderPath = m.folderPath
+        templateId = m.templateId
     }
 
     var model: Meeting {
         Meeting(id: id, title: title,
                 createdAt: Date(timeIntervalSince1970: createdAt),
                 updatedAt: Date(timeIntervalSince1970: updatedAt),
-                durationSeconds: duration, participantCount: participants, folderPath: folderPath)
+                durationSeconds: duration, participantCount: participants, folderPath: folderPath,
+                templateId: templateId)
     }
 }
 
@@ -182,18 +208,16 @@ private struct SegmentRow: Codable, FetchableRecord, PersistableRecord {
     var endSeconds: Double
     var idx: Int
     var source: String
-    var speaker: Int
 
     init(_ s: TranscriptSegment, idx: Int) {
         id = s.id; meetingId = s.meetingId; text = s.text
         startSeconds = s.startSeconds; endSeconds = s.endSeconds; self.idx = idx
         source = s.source.rawValue
-        speaker = s.speaker
     }
 
     var model: TranscriptSegment {
         TranscriptSegment(id: id, meetingId: meetingId, text: text, startSeconds: startSeconds, endSeconds: endSeconds,
-                          source: TranscriptSource(rawValue: source) ?? .unknown, speaker: speaker)
+                          source: TranscriptSource(rawValue: source) ?? .unknown)
     }
 }
 
@@ -204,6 +228,7 @@ private struct SummaryRow: Codable, FetchableRecord, PersistableRecord {
     var decisions: String
     var tasks: String
     var markdown: String
+    var editedAt: Double?
 
     init(meetingId: String, _ s: MeetingSummary) {
         self.meetingId = meetingId
@@ -211,11 +236,13 @@ private struct SummaryRow: Codable, FetchableRecord, PersistableRecord {
         decisions = (try? String(data: JSONEncoder().encode(s.decisions), encoding: .utf8) ?? "[]") ?? "[]"
         tasks = (try? String(data: JSONEncoder().encode(s.tasks), encoding: .utf8) ?? "[]") ?? "[]"
         markdown = s.markdown
+        editedAt = s.editedAt?.timeIntervalSince1970
     }
 
     var model: MeetingSummary {
         let dec = (try? JSONDecoder().decode([String].self, from: Data(decisions.utf8))) ?? []
         let tsk = (try? JSONDecoder().decode([SummaryTask].self, from: Data(tasks.utf8))) ?? []
-        return MeetingSummary(tldr: tldr, decisions: dec, tasks: tsk, markdown: markdown)
+        return MeetingSummary(tldr: tldr, decisions: dec, tasks: tsk, markdown: markdown,
+                              editedAt: editedAt.map(Date.init(timeIntervalSince1970:)))
     }
 }

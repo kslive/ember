@@ -4,6 +4,7 @@ import DesignSystem
 import SummaryService
 import SwiftUI
 import TranscriptionService
+import UniformTypeIdentifiers
 import UpdaterService
 
 public struct SettingsView: View {
@@ -11,10 +12,14 @@ public struct SettingsView: View {
     @EnvironmentObject private var theme: ThemeManager
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var updater: UpdaterService
+    @EnvironmentObject private var templateStore: TemplateStore
     @ObservedObject private var transcription: TranscriptionService
     @ObservedObject private var summary: SummaryService
+    private let onToast: (String, ToastInfo.Tone) -> Void
     @State private var tab: Tab = .general
     @State private var calendarAccess: CalendarTitles.Access = .notDetermined
+    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var launchNeedsApproval = LaunchAtLogin.needsApproval
     @State private var pendingDelete: PendingModelDelete?
     @State private var deepseekDraft = ""
     @State private var deepseekModels: [String] = []
@@ -52,9 +57,11 @@ public struct SettingsView: View {
         }
     }
 
-    public init(transcription: TranscriptionService, summary: SummaryService) {
+    public init(transcription: TranscriptionService, summary: SummaryService,
+                onToast: @escaping (String, ToastInfo.Tone) -> Void = { _, _ in }) {
         self.transcription = transcription
         self.summary = summary
+        self.onToast = onToast
     }
 
     public var body: some View {
@@ -153,6 +160,9 @@ public struct SettingsView: View {
         segmentCard(locale.t("settings.theme"), locale.t("settings.theme.desc")) { themeSegmented }
         segmentCard(locale.t("settings.accent"), locale.t("settings.accent.desc")) { accentSwatches }
         segmentCard(locale.t("settings.language"), locale.t("settings.language.desc")) { languageSegmented }
+
+        sectionTitle(locale.t("settings.group.system")).padding(.top, 14)
+        launchAtLoginCard
 
         sectionTitle(locale.t("settings.group.notifications")).padding(.top, 14)
         settingRow(locale.t("settings.notifications"), locale.t("settings.notifications.desc")) {
@@ -264,33 +274,6 @@ public struct SettingsView: View {
         }
     }
 
-    @ViewBuilder private var recordingTab: some View {
-        settingRow(locale.t("settings.recording.notifyOnStart"), locale.t("settings.recording.notifyOnStart.desc")) {
-            EmberToggle(isOn: $settings.notifyOnStart)
-        }
-        settingRow(locale.t("settings.recording.diarization"), locale.t("settings.recording.diarization.desc")) {
-            EmberToggle(isOn: $settings.diarizationEnabled)
-        }
-        card {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(locale.t("settings.recording.devices")).font(EmberType.semibold(15)).foregroundStyle(EmberColor.text)
-                    Text(locale.t("settings.recording.devices.desc")).font(EmberType.regular(13)).foregroundStyle(EmberColor.text2)
-                }
-                HStack(alignment: .top, spacing: 16) {
-                    DeviceSelectField(caption: locale.t("settings.recording.microphone"), defaultLabel: locale.t("settings.recording.micDefault"),
-                                      devices: devices.inputs, selectedUID: settings.preferredMicUID) { settings.preferredMicUID = $0 }
-                    DeviceSelectField(caption: locale.t("settings.recording.systemAudio"), defaultLabel: locale.t("settings.recording.systemDefault"),
-                                      devices: devices.outputs, selectedUID: settings.preferredSystemUID) { settings.preferredSystemUID = $0 }
-                }
-                VStack(alignment: .leading, spacing: 5) {
-                    note(locale.t("settings.recording.micNote"))
-                    note(locale.t("settings.recording.sysNote"))
-                }.padding(.top, 2)
-            }
-        }
-    }
-
     @ViewBuilder private func modelsTab(transcription isWhisper: Bool) -> some View {
         if !isWhisper {
             settingRow(locale.t("settings.autoSummary"), locale.t("settings.autoSummary.desc")) {
@@ -299,38 +282,45 @@ public struct SettingsView: View {
         }
         sectionTitle(locale.t(isWhisper ? "settings.transcription.title" : "settings.summary.title"))
         if isWhisper {
-            ForEach(TranscriptionCatalog.all) { m in
-                VStack(alignment: .trailing, spacing: 4) {
-                    EmberModelCard(name: m.displayName,
-                                   desc: m.engine == .gigaAM
-                                       ? locale.t("model.gigaam.desc") + " · " + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"])
-                                       : locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
-                                   meta: "\(m.sizeMB) \(sizeUnit)",
-                                   badge: badgeText(m.badge),
-                                   state: whisperState(m.id), totalMB: m.sizeMB, errorText: whisperError(m.id),
-                                   onAction: { whisperAction(m.id) })
-                    if isDeletable(whisperState(m.id)) {
-                        deleteLink(PendingModelDelete(name: m.displayName, size: "\(m.sizeMB) \(sizeUnit)",
-                                                      isWhisper: true, id: m.id, repoId: ""))
+            ForEach(TranscriptionCatalog.groups, id: \.titleKey) { g in
+                modelGroupLabel(g.titleKey)
+                ForEach(g.models) { m in
+                    VStack(alignment: .trailing, spacing: 4) {
+                        EmberModelCard(name: m.displayName,
+                                       desc: m.engine == .gigaAM
+                                           ? locale.t("model.gigaam.desc") + " · " + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"])
+                                           : locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
+                                       meta: "\(m.sizeMB) \(sizeUnit)",
+                                       badge: badgeText(m.badge),
+                                       state: whisperState(m.id), totalMB: m.sizeMB, errorText: whisperError(m.id),
+                                       onAction: { whisperAction(m.id) })
+                        if isDeletable(whisperState(m.id)) {
+                            deleteLink(PendingModelDelete(name: m.displayName, size: "\(m.sizeMB) \(sizeUnit)",
+                                                          isWhisper: true, id: m.id, repoId: ""))
+                        }
                     }
                 }
             }
         } else {
-            ForEach(SummaryCatalog.all) { m in
-                VStack(alignment: .trailing, spacing: 4) {
-                    EmberModelCard(name: m.displayName,
-                                   desc: (m.noteKey.map { locale.t($0) + " · " } ?? "")
-                                       + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
-                                   meta: "\(m.sizeMB) \(sizeUnit) · \(m.contextTokens) \(locale.t("model.tokens"))",
-                                   badge: badgeText(m.badge),
-                                   state: summaryState(m.id), totalMB: m.sizeMB, errorText: summaryError(m.id),
-                                   onAction: { summaryAction(m.id) })
-                    if isDeletable(summaryState(m.id)) {
-                        deleteLink(PendingModelDelete(name: m.displayName, size: "\(m.sizeMB) \(sizeUnit)",
-                                                      isWhisper: false, id: m.id, repoId: m.repoId))
+            ForEach(SummaryCatalog.groups, id: \.titleKey) { g in
+                modelGroupLabel(g.titleKey)
+                ForEach(g.models) { m in
+                    VStack(alignment: .trailing, spacing: 4) {
+                        EmberModelCard(name: m.displayName,
+                                       desc: (m.noteKey.map { locale.t($0) + " · " } ?? "")
+                                           + locale.t("model.ramHint", ["g": "\(m.ramHintGB)"]),
+                                       meta: "\(m.sizeMB) \(sizeUnit) · \(m.contextTokens) \(locale.t("model.tokens"))",
+                                       badge: badgeText(m.badge),
+                                       state: summaryState(m.id), totalMB: m.sizeMB, errorText: summaryError(m.id),
+                                       onAction: { summaryAction(m.id) })
+                        if isDeletable(summaryState(m.id)) {
+                            deleteLink(PendingModelDelete(name: m.displayName, size: "\(m.sizeMB) \(sizeUnit)",
+                                                          isWhisper: false, id: m.id, repoId: m.repoId))
+                        }
                     }
                 }
             }
+            templateSection
             deepseekSection
         }
     }
@@ -766,5 +756,202 @@ public struct SettingsView: View {
     private func badgeText(_ b: ModelBadge?) -> String? {
         guard let b else { return nil }
         return locale.t(b == .recommended ? "model.badge.recommended" : "model.badge.balanced")
+    }
+}
+
+extension SettingsView {
+    /// Recording tab, grouped: notifications / processing / audio devices. The
+    /// deferred-queue toggle exists only in tandem with auto-summary — without it
+    /// there is nothing to defer, so the row is disabled (the description says why).
+    @ViewBuilder var recordingTab: some View {
+        sectionTitle(locale.t("settings.group.notifications"))
+        settingRow(locale.t("settings.recording.notifyOnStart"), locale.t("settings.recording.notifyOnStart.desc")) {
+            EmberToggle(isOn: $settings.notifyOnStart)
+        }
+
+        sectionTitle(locale.t("settings.group.processing")).padding(.top, 14)
+        settingRow(locale.t("settings.recording.deferred"), locale.t("settings.recording.deferred.desc")) {
+            EmberToggle(isOn: $settings.deferredProcessing)
+                .disabled(!settings.autoSummary)
+        }
+        .opacity(settings.autoSummary ? 1 : 0.5)
+
+        sectionTitle(locale.t("settings.group.devices")).padding(.top, 14)
+        card {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(locale.t("settings.recording.devices")).font(EmberType.semibold(15)).foregroundStyle(EmberColor.text)
+                    Text(locale.t("settings.recording.devices.desc")).font(EmberType.regular(13)).foregroundStyle(EmberColor.text2)
+                }
+                HStack(alignment: .top, spacing: 16) {
+                    DeviceSelectField(caption: locale.t("settings.recording.microphone"), defaultLabel: locale.t("settings.recording.micDefault"),
+                                      devices: devices.inputs, selectedUID: settings.preferredMicUID) { settings.preferredMicUID = $0 }
+                    DeviceSelectField(caption: locale.t("settings.recording.systemAudio"), defaultLabel: locale.t("settings.recording.systemDefault"),
+                                      devices: devices.outputs, selectedUID: settings.preferredSystemUID) { settings.preferredSystemUID = $0 }
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    note(locale.t("settings.recording.micNote"))
+                    note(locale.t("settings.recording.sysNote"))
+                }.padding(.top, 2)
+            }
+        }
+    }
+
+    /// Small mono sub-heading between model groups inside a models tab.
+    func modelGroupLabel(_ key: String) -> some View {
+        Text(locale.t(key))
+            .font(EmberType.mono(10.5)).tracking(1.2).textCase(.uppercase)
+            .foregroundStyle(EmberColor.text3)
+            .padding(.top, 6)
+    }
+
+    /// Launch-at-login: the toggle writes through SMAppService and re-reads the
+    /// ACTUAL system state (the same switch lives in System Settings → Login
+    /// Items, and macOS can gate a registration behind user approval there).
+    var launchAtLoginCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(locale.t("settings.launchAtLogin"))
+                            .font(EmberType.semibold(15)).foregroundStyle(EmberColor.text)
+                        Text(locale.t("settings.launchAtLogin.desc"))
+                            .font(EmberType.regular(13)).lineSpacing(3).foregroundStyle(EmberColor.text2)
+                    }
+                    Spacer(minLength: 12)
+                    EmberToggle(isOn: Binding(
+                        get: { launchAtLogin },
+                        set: { on in
+                            launchAtLogin = LaunchAtLogin.setEnabled(on)
+                            launchNeedsApproval = LaunchAtLogin.needsApproval
+                        }
+                    ))
+                }
+                if launchNeedsApproval {
+                    HStack(spacing: 10) {
+                        Text(locale.t("settings.launchAtLogin.approve"))
+                            .font(EmberType.regular(12.5)).foregroundStyle(EmberColor.warn)
+                        Button(action: LaunchAtLogin.openSystemSettings, label: {
+                            Text(locale.t("common.open"))
+                                .font(EmberType.medium(12.5)).foregroundStyle(EmberColor.accentText)
+                                .contentShape(Rectangle())
+                        })
+                        .buttonStyle(.plain).hoverCursor()
+                    }
+                }
+            }
+        }
+        .onAppear {
+            launchAtLogin = LaunchAtLogin.isEnabled
+            launchNeedsApproval = LaunchAtLogin.needsApproval
+        }
+    }
+
+    /// Summary template picker + the Templates folder (open / import / restore).
+    /// Templates are plain `.md` files under Application Support/Ember/Templates.
+    @ViewBuilder var templateSection: some View {
+        sectionTitle(locale.t("settings.template.title")).padding(.top, 14)
+        card {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(locale.t("settings.template.desc"))
+                    .font(EmberType.regular(13)).lineSpacing(3).foregroundStyle(EmberColor.text2)
+                TemplatePickerField(
+                    caption: locale.t("settings.template.picker"),
+                    templates: templateStore.templates,
+                    selectedId: settings.summaryTemplateId,
+                    onSelect: { settings.summaryTemplateId = $0 }
+                )
+                HStack(spacing: 8) {
+                    EmberButton(locale.t("settings.template.open"), kind: .secondary, height: 34) {
+                        templateStore.revealFolder()
+                    }
+                    EmberButton(locale.t("common.import"), kind: .secondary, height: 34) { importTemplate() }
+                    EmberButton(locale.t("settings.template.restore"), kind: .secondary, height: 34) {
+                        templateStore.restoreStandard()
+                    }
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private func importTemplate() {
+        let panel = NSOpenPanel()
+        if let md = UTType(filenameExtension: "md") { panel.allowedContentTypes = [md] }
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // Import only ADDS to the library — it must not silently change the global
+        // default (that would relabel meetings). The user picks it explicitly; a
+        // success toast confirms the file landed in the folder.
+        if templateStore.importTemplate(from: url) != nil {
+            onToast(locale.t("settings.template.imported"), .good)
+        } else {
+            onToast(locale.t("settings.template.importFailed"), .error)
+        }
+    }
+
+    /// Dropdown for the summary template (name + description per row), same visual
+    /// language as DeviceSelectField.
+    struct TemplatePickerField: View {
+        let caption: String
+        let templates: [SummaryTemplate]
+        let selectedId: String
+        let onSelect: (String) -> Void
+        @State private var open = false
+
+        private var current: SummaryTemplate? {
+            templates.first { $0.id == selectedId } ?? templates.first
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(caption).font(EmberType.mono(10.5)).tracking(0.63).textCase(.uppercase).foregroundStyle(EmberColor.text3)
+                Button { open.toggle() } label: {
+                    HStack(spacing: 12) {
+                        Text(current?.name ?? "Standard").font(EmberType.regular(13.5)).foregroundStyle(EmberColor.text).lineLimit(1)
+                        Spacer(minLength: 8)
+                        EmberIcon(.chevronRight, size: 14, lineWidth: 2, color: EmberColor.text3)
+                            .rotationEffect(.degrees(90))
+                    }
+                    .padding(.horizontal, 14).frame(height: 40).frame(maxWidth: .infinity)
+                    .background(EmberColor.surface)
+                    .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(EmberColor.borderStrong, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hoverCursor()
+                .popover(isPresented: $open, arrowEdge: .bottom) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(templates) { t in
+                                Button { onSelect(t.id); open = false } label: {
+                                    HStack(alignment: .top, spacing: 8) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(t.name).font(EmberType.medium(13)).foregroundStyle(EmberColor.text).lineLimit(1)
+                                            if !t.description.isEmpty {
+                                                Text(t.description).font(EmberType.regular(11.5)).foregroundStyle(EmberColor.text3).lineLimit(2)
+                                            }
+                                        }
+                                        Spacer(minLength: 8)
+                                        if t.id == selectedId {
+                                            EmberIcon(.check, size: 13, lineWidth: 2, color: EmberColor.accent).padding(.top, 2)
+                                        }
+                                    }
+                                    .padding(.horizontal, 10).padding(.vertical, 7).frame(maxWidth: .infinity)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .hoverCursor()
+                            }
+                        }
+                        .padding(6)
+                    }
+                    .frame(width: 320)
+                    .frame(maxHeight: 360)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

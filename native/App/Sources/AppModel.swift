@@ -2,7 +2,7 @@ import AudioService
 import CallDetectService
 import Combine
 import Core
-import DiarizationService
+import MeetingsFeature
 import OSLog
 import PersistenceService
 import SummaryService
@@ -24,8 +24,8 @@ final class AppModel: ObservableObject {
     let engine = RecordingEngine()
     let transcription = TranscriptionService()
     let summary = SummaryService()
+    let summaryEditor = SummaryEditorModel()
     let callDetect = CallDetectService()
-    private let diarization = DiarizationService()
     private var autoStarted = false
     private static let log = Logger(subsystem: "com.kslff.ember", category: "pipeline")
 
@@ -48,6 +48,43 @@ final class AppModel: ObservableObject {
     private var calendarMeetingTitles: [String: String] = [:]
     private var isStarting = false
     private var isSummarizing = false
+
+    /// Deferred-processing queue (Settings → Recording): heavy post-processing of
+    /// finished calls waits here until NO recording is active. Jobs reference the
+    /// ALIGNED 16k spill files on disk (not RAM: ~460 MB/hour would pile up during
+    /// back-to-back calls). In-memory only — on relaunch purgeRecordings() wipes the
+    /// spill files and the queue is gone; the live transcript is already in the DB,
+    /// the summary is one "Regenerate" away. Nothing is lost silently.
+    private enum QueuedWork {
+        case full(mic16k: URL?, sys16k: URL?, lang: String)
+        case summaryOnly
+    }
+
+    private struct QueuedJob {
+        let meetingId: String
+        let work: QueuedWork
+    }
+
+    private var deferredQueue: [QueuedJob] = []
+    private var isDraining = false
+    private var drainTask: Task<Void, Never>?
+    /// The job the drain is compute-ing right now (nil between jobs). When a call
+    /// interrupts it, this is re-queued at the FRONT and the meeting flips to
+    /// `.queued` INSTANTLY — without waiting for the (mid-window-uninterruptible)
+    /// transcription/summary to actually unwind.
+    private var drainingJob: QueuedJob?
+    /// Meetings whose in-flight compute was interrupted and already re-queued by
+    /// `interruptDraining` — `process()` bails at its next checkpoint without saving
+    /// or re-queuing a second time.
+    private var interruptedIds: Set<String> = []
+
+    /// The deferred queue is IN EFFECT only together with auto-summary — the
+    /// settings toggle is disabled without it (nothing to defer), and the pipeline
+    /// mirrors that so a stale stored flag can't change behavior.
+    private var deferredActive: Bool {
+        SettingsStore.deferredProcessingOn() && SettingsStore.autoSummaryOn()
+    }
+
     private var liveTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -56,6 +93,14 @@ final class AppModel: ObservableObject {
                     transcription.objectWillChange, summary.objectWillChange] {
             obj.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
         }
+        summaryEditor.onSave = { [weak self] id, md in self?.saveEditedSummary(meetingId: id, markdown: md) }
+        engine.$status
+            .removeDuplicates()
+            .sink { [weak self] st in
+                guard st == .idle || st == .completed else { return }
+                Task { @MainActor in self?.drainIfIdle() }
+            }
+            .store(in: &cancellables)
         callDetect.onCallStart = { [weak self] in self?.autoStartFromCall() }
         callDetect.onCallEnd = { [weak self] in self?.autoStopFromCall() }
         callDetect.start()
@@ -66,6 +111,20 @@ final class AppModel: ObservableObject {
             store.purgeDemo()
         }
         if store.persistenceDegraded { showToast(tr("toast.persistenceDegraded"), tone: .error) }
+        // Launch-at-login defaults to ON (the app's whole point is catching calls,
+        // which needs it running) — but only ONCE: a user who turns it off must not
+        // be re-enrolled on the next launch.
+        if !UserDefaults.standard.bool(forKey: "ember.launchAtLoginDefaulted") {
+            UserDefaults.standard.set(true, forKey: "ember.launchAtLoginDefaulted")
+            LaunchAtLogin.setEnabled(true)
+        }
+        // Calendar titles are ON but the system grant is gone (an update changed the
+        // signing identity, or the user reset privacy settings) — re-request right at
+        // launch instead of silently stopping to pick titles until the toggle is
+        // flipped off and on again.
+        if SettingsStore.calendarTitlesOn(), CalendarTitles.accessStatus() == .notDetermined {
+            Task { _ = await CalendarTitles.requestAccess() }
+        }
     }
 
     private func notify(_ en: String, _ ru: String, _ zh: String) {
@@ -147,6 +206,15 @@ final class AppModel: ObservableObject {
                 return
             }
             autoStarted = auto
+            if deferredActive {
+                // A call just started: stop the heavy pipeline NOW (token-level for
+                // MLX, per-window for Whisper, per-chunk for GigaAM) and flip the
+                // in-flight meeting back to "queued" immediately.
+                drainTask?.cancel()
+                summary.requestAbort()
+                transcription.requestAbort()
+                interruptDraining()
+            }
             recordingStartedAt = Date()
             recordingCalendarTitle = SettingsStore.calendarTitlesOn() ? CalendarTitles.eventTitle(at: Date()) : nil
             startLiveLoop(id)
@@ -310,22 +378,172 @@ final class AppModel: ObservableObject {
             return
         }
         processingIds.insert(id)
-        notify("Recording stopped — processing…", "Запись остановлена — обработка…", "录音已停止——处理中…")
-        showToast(tr("toast.recStopped"), tone: .info)
-        Task {
-            await live?.value
-            await process(meetingId: id, liveFinal: liveFinal, micSamples: micSamples,
-                          systemSamples: systemSamples, mic: mic, system: system)
+        if deferredActive {
+            notify("Recording queued — processing after your calls", "Запись в очереди — обработаю после звонков",
+                   "录音已排队——通话结束后处理")
+            showToast(tr("toast.recQueued"), tone: .info)
+            Task {
+                await live?.value
+                await enqueueDeferred(meetingId: id, liveFinal: liveFinal, micSamples: micSamples,
+                                      systemSamples: systemSamples, mic: mic, system: system)
+                drainIfIdle()
+            }
+        } else {
+            notify("Recording stopped — processing…", "Запись остановлена — обработка…", "录音已停止——处理中…")
+            showToast(tr("toast.recStopped"), tone: .info)
+            Task {
+                await live?.value
+                await process(meetingId: id, liveFinal: liveFinal, micSamples: micSamples,
+                              systemSamples: systemSamples, mic: mic, system: system)
+            }
         }
     }
 
+    /// Deferred mode, at stop: save the live transcript NOW (the user sees content
+    /// immediately), spill the ALIGNED 16k accumulators to the transit dir off-main,
+    /// delete the unaligned 48k engine files, and mark the meeting as queued. The
+    /// recognition language is captured here — the user may switch it before drain.
+    private func enqueueDeferred(meetingId id: String, liveFinal: [TranscriptSegment],
+                                 micSamples: [Float], systemSamples: [Float], mic: URL?, system: URL?) async {
+        let segs = liveFinal.filter { TranscriptionService.hasSpeech($0.text) }
+        if !segs.isEmpty {
+            store.saveTranscript(meetingId: id, segments: segs)
+        }
+        processingStages[id] = ProcessingProgress(stage: .queued, step: 1, total: 1)
+        revision += 1
+        let dir = RecordingEngine.recordingsDir()
+        let micURL = dir.appendingPathComponent("\(id)-mic16k.caf")
+        let sysURL = dir.appendingPathComponent("\(id)-sys16k.caf")
+        let written = await Task.detached(priority: .utility) {
+            (mic: AudioMixer.writeSamples16k(micSamples, to: micURL),
+             sys: AudioMixer.writeSamples16k(systemSamples, to: sysURL))
+        }.value
+        if let mic { try? FileManager.default.removeItem(at: mic) }
+        if let system { try? FileManager.default.removeItem(at: system) }
+        deferredQueue.append(QueuedJob(meetingId: id, work: .full(mic16k: written.mic, sys16k: written.sys,
+                                                                  lang: whisperLang())))
+        refreshQueuedStages()
+    }
+
+    /// Re-stamps every queued meeting with its live position ("В очереди: N из M").
+    private func refreshQueuedStages() {
+        let total = deferredQueue.count
+        for (i, job) in deferredQueue.enumerated() {
+            processingStages[job.meetingId] = ProcessingProgress(stage: .queued, step: i + 1, total: total)
+        }
+        revision += 1
+    }
+
+    /// Drains the deferred queue sequentially while NO recording is active. Runs
+    /// regardless of the toggle (turning it OFF with a non-empty queue must still
+    /// drain). Re-entrancy-safe via `isDraining` (everything is MainActor); the loop
+    /// re-checks `isRecordingActive` before every job so a new call pauses the queue
+    /// — the engine-status sink re-triggers the drain when it ends.
+    private func drainIfIdle() {
+        guard !isDraining, !deferredQueue.isEmpty, !isRecordingActive else { return }
+        isDraining = true
+        drainTask = Task {
+            while !deferredQueue.isEmpty, !isRecordingActive, !Task.isCancelled {
+                let job = deferredQueue.removeFirst()
+                refreshQueuedStages()
+                await runDeferred(job)
+            }
+            isDraining = false
+            // Queue fully drained and nothing recording → free BOTH models right
+            // away so the GPU/CPU go quiet (an interrupted drain skips this — the
+            // live loop still needs the ASR model).
+            if deferredQueue.isEmpty, !isRecordingActive {
+                transcription.unload()
+                summary.unload()
+            }
+        }
+    }
+
+    private func runDeferred(_ job: QueuedJob) async {
+        let id = job.meetingId
+        processingIds.insert(id)
+        drainingJob = job
+        defer { if drainingJob?.meetingId == id { drainingJob = nil } }
+        switch job.work {
+        case let .full(mic16k, sys16k, lang):
+            let samples = await Task.detached(priority: .utility) {
+                (mic: mic16k.flatMap { AudioMixer.decode16kMono($0) } ?? [],
+                 sys: sys16k.flatMap { AudioMixer.decode16kMono($0) } ?? [])
+            }.value
+            let liveFinal = store.transcript(meetingId: id)
+            await process(meetingId: id, liveFinal: liveFinal, micSamples: samples.mic,
+                          systemSamples: samples.sys, mic: mic16k, system: sys16k,
+                          fromQueue: true, langOverride: lang)
+        case .summaryOnly:
+            var requeued = false
+            defer {
+                if !requeued { processingIds.remove(id); processingStages.removeValue(forKey: id) }
+                revision += 1
+            }
+            let text = speakerTranscript(store.transcript(meetingId: id))
+            guard !text.isEmpty, SettingsStore.autoSummaryOn(),
+                  let repo = SummaryCatalog.spec(for: SettingsStore.currentSummaryModelId())?.repoId else { return }
+            processingStages[id] = ProcessingProgress(stage: .summarize, step: 1, total: 1)
+            if await makeSummary(meetingId: id, text: text, repo: repo) {
+                notify("Summary ready", "Саммари готово", "摘要已就绪")
+                showToast(tr("toast.summaryReady"), tone: .good)
+            } else if requeueIfInterrupted(id: id, work: .summaryOnly) {
+                requeued = true
+            }
+        }
+    }
+
+    /// A call started mid-drain: instantly reflect the in-flight job as queued and
+    /// re-queue it at the FRONT (its spill files are still on disk), so the UI shows
+    /// "waiting" without waiting for the compute to unwind. `process()` /
+    /// `runDeferred` see the id in `interruptedIds` and bail without saving.
+    private func interruptDraining() {
+        guard let job = drainingJob else { return }
+        let id = job.meetingId
+        interruptedIds.insert(id)
+        if !deferredQueue.contains(where: { $0.meetingId == id }) {
+            deferredQueue.insert(job, at: 0)
+        }
+        drainingJob = nil
+        refreshQueuedStages()
+    }
+
+    /// Requeue decision at a `process()` checkpoint: if this meeting was interrupted
+    /// it is ALREADY back in the queue (just consume the flag); otherwise re-queue it
+    /// when a recording is active or the drain task was cancelled. Returns whether the
+    /// caller should bail.
+    private func requeueIfInterrupted(id: String, work: QueuedWork) -> Bool {
+        if interruptedIds.contains(id) {
+            interruptedIds.remove(id)
+            return true
+        }
+        if isRecordingActive || Task.isCancelled {
+            deferredQueue.append(QueuedJob(meetingId: id, work: work))
+            refreshQueuedStages()
+            return true
+        }
+        return false
+    }
+
+    /// Drops a meeting's queued job and its spill files (user deleted the meeting).
+    private func removeDeferred(meetingId id: String) {
+        deferredQueue.removeAll { $0.meetingId == id }
+        refreshQueuedStages()
+        let dir = RecordingEngine.recordingsDir()
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(id)-mic16k.caf"))
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(id)-sys16k.caf"))
+    }
+
     private func process(meetingId id: String, liveFinal: [TranscriptSegment], micSamples: [Float],
-                         systemSamples: [Float], mic: URL?, system: URL?) async {
-        defer { processingIds.remove(id); processingStages.removeValue(forKey: id); revision += 1 }
-        let lang = whisperLang()
-        let sysGated = !systemSamples.isEmpty && AudioLevel.peak(systemSamples) >= Self.silencePeak
+                         systemSamples: [Float], mic: URL?, system: URL?,
+                         fromQueue: Bool = false, langOverride: String? = nil) async {
+        var requeued = false
+        defer {
+            if !requeued { processingIds.remove(id); processingStages.removeValue(forKey: id) }
+            revision += 1
+        }
+        let lang = langOverride ?? whisperLang()
         let plan = ProcessingStage.plan(
-            diarize: SettingsStore.diarizationOn() && sysGated,
             summarize: SettingsStore.autoSummaryOn()
                 && SummaryCatalog.spec(for: SettingsStore.currentSummaryModelId())?.repoId != nil
         )
@@ -342,14 +560,28 @@ final class AppModel: ObservableObject {
             revision += 1
         }
 
+        // Deferred mode: a call is active (or the job was interrupted) — bail before
+        // any heavy work; the job is/goes back in the queue with its spill files.
+        if fromQueue, requeueIfInterrupted(id: id, work: .full(mic16k: mic, sys16k: system, lang: lang)) {
+            requeued = true
+            return
+        }
+
         // 2. Full re-pass WITHOUT VAD (strict: false) — VAD-chunking dropped quiet speech
         // and truncated the final; the plain pass (leading-silence trimmed per channel)
         // transcribes the whole buffer with correct timecodes.
         await transcription.ensureLoaded(model: SettingsStore.currentWhisperModelId())
-        async let micRaw = transcribeChannel(micSamples, meetingId: id, source: .mic)
-        async let sysRaw = transcribeChannel(systemSamples, meetingId: id, source: .system)
+        transcription.clearAbort()
+        async let micRaw = transcribeChannel(micSamples, meetingId: id, source: .mic, language: lang)
+        async let sysRaw = transcribeChannel(systemSamples, meetingId: id, source: .system, language: lang)
         let micSegs = await micRaw
         let sysSegs = await sysRaw
+        // Aborted mid-transcription: the partial re-pass is unusable — bail and let
+        // the whole job re-run from the queue after the calls end.
+        if fromQueue, requeueIfInterrupted(id: id, work: .full(mic16k: mic, sys16k: system, lang: lang)) {
+            requeued = true
+            return
+        }
         Self.logChannels(micSamples: micSamples, systemSamples: systemSamples, micSegs: micSegs, sysSegs: sysSegs)
         let rePass = TranscriptMerge.merge(mic: micSegs, system: sysSegs)
 
@@ -368,13 +600,6 @@ final class AppModel: ObservableObject {
                 try? FileManager.default.removeItem(at: audioURL)
             }
         }
-        // Offline speaker diarization of the SYSTEM channel → number distinct voices
-        // ("Собеседник 1/2/3"). Best-effort: on any failure segments keep speaker 0.
-        if SettingsStore.diarizationOn(), sysGated {
-            enterStage(.diarize)
-            let turns = await diarization.diarize(systemSamples)
-            if !turns.isEmpty { segs = DiarizationMap.assign(segs, turns: turns) }
-        }
         store.saveTranscript(meetingId: id, segments: segs)
         revision += 1
         if let mic { try? FileManager.default.removeItem(at: mic) }
@@ -382,10 +607,20 @@ final class AppModel: ObservableObject {
         let text = speakerTranscript(segs)
         if !text.isEmpty, SettingsStore.autoSummaryOn(),
            let repo = SummaryCatalog.spec(for: SettingsStore.currentSummaryModelId())?.repoId {
+            // Deferred mode: a call is running (or interrupted) — the transcript is
+            // saved, only the summary goes back to the queue (mirrors regenerate).
+            if deferredActive, requeueIfInterrupted(id: id, work: .summaryOnly) {
+                requeued = true
+                return
+            }
             enterStage(.summarize)
             if await makeSummary(meetingId: id, text: text, repo: repo) {
                 notify("Summary ready", "Саммари готово", "摘要已就绪")
                 showToast(tr("toast.summaryReady"), tone: .good)
+            } else if deferredActive, requeueIfInterrupted(id: id, work: .summaryOnly) {
+                // Aborted mid-generation: silently hand the summary back to the queue.
+                requeued = true
+                return
             }
         }
         // Free the ASR model IMMEDIATELY — it otherwise stays resident (1.5–2+ GB)
@@ -405,12 +640,17 @@ final class AppModel: ObservableObject {
         isSummarizing = true
         defer { isSummarizing = false }
         let lang = whisperLang()
+        // The meeting's chosen template (empty → global default). A broken/missing
+        // template file yields nil → the summary falls back to the built-in prompt.
+        let templateId = meeting(id)?.templateId.isEmpty == false
+            ? meeting(id)!.templateId : SettingsStore.currentSummaryTemplateId()
+        let systemOverride = SummaryTemplates.renderedSystem(id: templateId, languageCode: lang)
 
         // Cloud path first (optional DeepSeek key): fast, no local RAM/GPU cost.
         // ANY failure — no network, bad key, HTTP error, empty answer — falls through
         // to the local model, so a summary is always produced.
-        if let cloudMd = await cloudSummary(text: text, lang: lang) {
-            persistSummary(meetingId: id, markdown: cloudMd)
+        if let cloudMd = await cloudSummary(text: text, lang: lang, systemOverride: systemOverride) {
+            persistSummary(meetingId: id, markdown: cloudMd, templateId: templateId)
             return true
         }
 
@@ -424,30 +664,34 @@ final class AppModel: ObservableObject {
         // (the error message is read from status BEFORE unload resets it).
         await summary.ensureLoaded(repoId: repo)
         guard summary.isReady else {
+            if Task.isCancelled || summary.abortRequested { summary.unload(); return false }
             showToast(summaryErrorMessage(), tone: .error)
             summary.unload()
             return false
         }
-        let md = await summary.summarize(transcript: text, languageCode: lang)
+        let md = await summary.summarize(transcript: text, languageCode: lang, systemOverride: systemOverride)
         guard !md.isEmpty else {
+            // An abort (a call started, deferred mode) is not an error — no toast.
+            if Task.isCancelled || summary.abortRequested { summary.unload(); return false }
             showToast(summaryErrorMessage(), tone: .error)
             summary.unload()
             return false
         }
         summary.unload()
-        persistSummary(meetingId: id, markdown: md)
+        persistSummary(meetingId: id, markdown: md, templateId: templateId)
         return true
     }
 
     /// DeepSeek attempt. nil = no key configured or the cloud failed (logged + toast)
     /// — the caller continues with the local model.
-    private func cloudSummary(text: String, lang: String) async -> String? {
+    private func cloudSummary(text: String, lang: String, systemOverride: String?) async -> String? {
         guard let key = SettingsStore.deepseekKey() else { return nil }
         do {
             var model = SettingsStore.deepseekModelId()
             if model == nil { model = try await DeepSeekClient.listModels(key: key).first }
             guard let model else { return nil }
-            return try await summary.summarizeCloud(key: key, model: model, transcript: text, languageCode: lang)
+            return try await summary.summarizeCloud(key: key, model: model, transcript: text,
+                                                    languageCode: lang, systemOverride: systemOverride)
         } catch {
             Self.log.error("deepseek failed → local fallback: \(String(describing: error), privacy: .public)")
             showToast(tr("toast.deepseekFellBack"), tone: .warn)
@@ -455,13 +699,36 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Write-through for the live summary editor: DB first (with the edited-at
+    /// stamp), then the exported .md — Sage/Obsidian watch that file and update
+    /// live. The file write echoing back through the editor's folder watcher is
+    /// a no-op (body == buffer). Deliberately NO `revision` bump: reloading the
+    /// detail container mid-typing would churn the view for nothing.
+    func saveEditedSummary(meetingId id: String, markdown md: String) {
+        store.saveSummary(meetingId: id, summary: MeetingSummary(markdown: md, editedAt: Date()))
+        exportSummary(meetingId: id, markdown: md, title: nil)
+    }
+
+    /// The exported .md path of a meeting under the CURRENT settings — the file
+    /// the live editor watches and Sage/Obsidian open.
+    func exportedSummaryURL(for meeting: Meeting) -> URL? {
+        let folder = SettingsStore.exportFolder()
+        guard !folder.isEmpty else { return nil }
+        return URL(fileURLWithPath: folder, isDirectory: true)
+            .appendingPathComponent(SummaryExport.dateFolder(createdAt: meeting.createdAt), isDirectory: true)
+            .appendingPathComponent(SummaryExport.fileName(title: meeting.title, createdAt: meeting.createdAt))
+    }
+
     /// Shared tail for both summary paths: save, AI-title rename, auto-export.
     /// A calendar-sourced title wins over the AI one: the meeting was named at
     /// stop from the event running at recording start, so the AI rename is
     /// skipped (session-scoped — after a relaunch "Перегенерировать" renames
     /// again; acceptable edge).
-    private func persistSummary(meetingId id: String, markdown md: String) {
+    private func persistSummary(meetingId id: String, markdown md: String, templateId: String) {
         store.saveSummary(meetingId: id, summary: MeetingSummary(markdown: md))
+        // Pin the template the summary was actually made with, so the picker keeps
+        // showing it even after the global default changes (state is preserved).
+        store.setMeetingTemplate(id, templateId: templateId)
         if let calendarTitle = calendarMeetingTitles[id] {
             exportSummary(meetingId: id, markdown: md, title: calendarTitle)
             return
@@ -485,12 +752,14 @@ final class AppModel: ObservableObject {
     /// Whisper snaps speech to t=0 on a long silent lead-in, so feed it only from the
     /// first real sample and add the trimmed offset back to each segment. Tags the
     /// source; empty when the channel is silent.
-    private func transcribeChannel(_ samples: [Float], meetingId id: String, source: TranscriptSource) async -> [TranscriptSegment] {
+    private func transcribeChannel(_ samples: [Float], meetingId id: String, source: TranscriptSource,
+                                   language: String) async -> [TranscriptSegment] {
         guard AudioLevel.peak(samples) > Self.silencePeak else { return [] }
         let lead = AudioLevel.leadingSilence(samples, threshold: Self.silencePeak)
         let trimmed = lead > 0 ? Array(samples[lead...]) : samples
         let base = Double(lead) / 16000.0
-        let segs = await transcription.transcribeSamples(trimmed, meetingId: id, language: whisperLang(), strict: false)
+        let segs = await transcription.transcribeSamples(trimmed, meetingId: id, language: language, strict: false,
+                                                         interruptible: true)
         return segs.map { seg in
             var s = seg
             s.startSeconds += base
@@ -515,13 +784,14 @@ final class AppModel: ObservableObject {
         log.info("\(msg, privacy: .public)")
     }
 
-    /// Builds speaker-attributed transcript text for the summary AI: each line is
-    /// prefixed with who said it ("Я"/"Собеседник N") — including the diarized speaker
-    /// number — so the model can tell participants apart. Unknown lines pass through.
+    /// Builds channel-attributed transcript text for the summary AI: each line is
+    /// prefixed with its side ("Я"/"Собеседник") from the mic/system channel. The
+    /// model tells distinct participants apart from the content itself. Unknown
+    /// lines pass through.
     private func speakerTranscript(_ segs: [TranscriptSegment]) -> String {
         let me = tr("speaker.me"), them = tr("speaker.them")
         return segs.map { seg in
-            if let label = SpeakerLabel.text(source: seg.source, speaker: seg.speaker, me: me, them: them) {
+            if let label = SpeakerLabel.text(source: seg.source, me: me, them: them) {
                 return "\(label): \(seg.text)"
             }
             return seg.text
@@ -581,7 +851,15 @@ final class AppModel: ObservableObject {
         renaming = nil
     }
 
+    /// Persists the per-meeting summary template and bumps `revision` so the open
+    /// detail view re-reads the meeting with its new `templateId`.
+    func setMeetingTemplate(_ id: String, templateId: String) {
+        store.setMeetingTemplate(id, templateId: templateId)
+        revision += 1
+    }
+
     func confirmDelete(_ id: String) {
+        removeDeferred(meetingId: id)
         store.delete(id)
         if selectedMeetingId == id { selectedMeetingId = nil; route = .home }
         deleting = nil

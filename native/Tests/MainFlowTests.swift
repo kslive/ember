@@ -371,14 +371,12 @@ final class MainFlowTests: XCTestCase {
 /// Post-recording pipeline stage plan (drives the "step N of M" indicator).
 final class ProcessingStageTests: XCTestCase {
     func testPlanVariants() {
-        XCTAssertEqual(ProcessingStage.plan(diarize: true, summarize: true), [.transcribe, .diarize, .summarize])
-        XCTAssertEqual(ProcessingStage.plan(diarize: false, summarize: true), [.transcribe, .summarize])
-        XCTAssertEqual(ProcessingStage.plan(diarize: true, summarize: false), [.transcribe, .diarize])
-        XCTAssertEqual(ProcessingStage.plan(diarize: false, summarize: false), [.transcribe])
+        XCTAssertEqual(ProcessingStage.plan(summarize: true), [.transcribe, .summarize])
+        XCTAssertEqual(ProcessingStage.plan(summarize: false), [.transcribe])
     }
 
     func testTitleKeysExistInAllLanguages() {
-        for stage in [ProcessingStage.transcribe, .diarize, .summarize] {
+        for stage in [ProcessingStage.queued, .transcribe, .summarize] {
             for lang in AppLanguage.allCases {
                 XCTAssertNotNil(LocalizedStrings.table[lang]?[stage.titleKey], "\(lang) \(stage.titleKey)")
             }
@@ -395,6 +393,19 @@ final class SageIntegrationTests: XCTestCase {
         XCTAssertEqual(url.host, "open")
         let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
         XCTAssertEqual(comps?.queryItems?.first(where: { $0.name == "path" })?.value, path)
+        XCTAssertNil(comps?.queryItems?.first(where: { $0.name == "root" }))
         XCTAssertFalse(url.absoluteString.contains(" "))
+    }
+
+    /// With per-day export subfolders the deep link must carry the VAULT root —
+    /// otherwise Sage would switch its space to a bare date folder.
+    func testOpenURLCarriesVaultRoot() throws {
+        let path = "/Users/kslff/Vault/15.07.2026/Тема.md"
+        let url = try XCTUnwrap(SageIntegration.openURL(forPath: path, root: "/Users/kslff/Vault"))
+        let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        XCTAssertEqual(comps?.queryItems?.first(where: { $0.name == "root" })?.value, "/Users/kslff/Vault")
+        XCTAssertNil(try URLComponents(url: XCTUnwrap(SageIntegration.openURL(forPath: path, root: "")),
+                                       resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "root" }))
     }
 }

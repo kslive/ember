@@ -28,17 +28,23 @@ public enum SageIntegration {
     }
 
     /// Deep-link URL for a note path (pure, testable — query encoding included).
-    public static func openURL(forPath path: String) -> URL? {
+    /// `root` names the vault root Sage should switch its space to when the file
+    /// is outside the current one — without it Sage falls back to the file's
+    /// PARENT folder, which since the per-day export subfolders would be a bare
+    /// date folder instead of the user's vault. Older Sage builds ignore `root`.
+    public static func openURL(forPath path: String, root: String? = nil) -> URL? {
         var comps = URLComponents()
         comps.scheme = "sage"
         comps.host = "open"
-        comps.queryItems = [URLQueryItem(name: "path", value: path)]
+        var items = [URLQueryItem(name: "path", value: path)]
+        if let root, !root.isEmpty { items.append(URLQueryItem(name: "root", value: root)) }
+        comps.queryItems = items
         return comps.url
     }
 
-    public static func open(file: URL) {
+    public static func open(file: URL, root: String? = nil) {
         guard let sage = appURL else { return }
-        if let link = openURL(forPath: file.path),
+        if let link = openURL(forPath: file.path, root: root),
            NSWorkspace.shared.urlForApplication(toOpen: link) != nil {
             NSWorkspace.shared.open(link)
         } else {

@@ -8,7 +8,8 @@ final class SettingsStoreTests: XCTestCase {
     private let touchedKeys = [
         SettingsStore.notificationsKey, SettingsStore.notifyOnStartKey,
         SettingsStore.micDeviceKey, SettingsStore.exportFolderKey,
-        SettingsStore.summaryKey, SettingsStore.whisperKey
+        SettingsStore.summaryKey, SettingsStore.whisperKey,
+        SettingsStore.deferredProcessingKey
     ]
 
     override func tearDown() {
@@ -53,9 +54,10 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(SettingsStore.preferredMicUID(), "BuiltInMicrophoneDevice")
     }
 
-    func testExportFolderDefaultsToDocuments() {
+    func testExportFolderDefaultsToDocumentsEmberSubfolder() {
         UserDefaults.standard.removeObject(forKey: SettingsStore.exportFolderKey)
         XCTAssertEqual(SettingsStore.exportFolder(), SettingsStore.defaultExportFolder())
+        XCTAssertTrue(SettingsStore.defaultExportFolder().hasSuffix("/Documents/Ember"))
     }
 
     func testExportFolderReadsStored() {
@@ -81,5 +83,15 @@ final class SettingsStoreTests: XCTestCase {
     func testCurrentWhisperModelIdGarbageFallsBackToDefault() {
         UserDefaults.standard.set("nonsense", forKey: SettingsStore.whisperKey)
         XCTAssertEqual(SettingsStore.currentWhisperModelId(), TranscriptionCatalog.defaultId)
+    }
+
+    func testDeferredProcessingDefaultsOff() {
+        UserDefaults.standard.removeObject(forKey: SettingsStore.deferredProcessingKey)
+        XCTAssertFalse(SettingsStore.deferredProcessingOn())
+    }
+
+    func testDeferredProcessingReadsStored() {
+        UserDefaults.standard.set(true, forKey: SettingsStore.deferredProcessingKey)
+        XCTAssertTrue(SettingsStore.deferredProcessingOn())
     }
 }

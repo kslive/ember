@@ -77,6 +77,13 @@ final class EmberTests: XCTestCase {
         let loaded = store.summary(meetingId: m.id)
         XCTAssertEqual(loaded?.markdown, "# Summary")
         XCTAssertEqual(loaded?.tasks.first?.assignee, "Sam")
+        XCTAssertNil(loaded?.editedAt)
+
+        let stamp = Date(timeIntervalSince1970: 1_784_000_000)
+        store.saveSummary(meetingId: m.id, summary: MeetingSummary(markdown: "# Edited", editedAt: stamp))
+        let edited = store.summary(meetingId: m.id)
+        XCTAssertEqual(edited?.markdown, "# Edited")
+        XCTAssertEqual(edited?.editedAt?.timeIntervalSince1970 ?? 0, stamp.timeIntervalSince1970, accuracy: 0.001)
 
         store.delete(m.id)
         XCTAssertTrue(store.meetings.isEmpty)

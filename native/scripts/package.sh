@@ -40,8 +40,19 @@ APP="$DIST/$APP_NAME.app"
 MLIB="$APP/Contents/Frameworks/Cmlx.framework/Versions/A/Resources"
 if [ -f "$MLIB/default.metallib" ]; then cp -f "$MLIB/default.metallib" "$MLIB/mlx.metallib"; echo "🔧 mlx.metallib created"; fi
 
-# 4) Ad-hoc sign (no Apple cert / notarization) + clear xattrs
-codesign --force --deep --sign - "$APP"
+# 4) Sign + clear xattrs. Prefer the persistent self-signed "Ember Signing"
+# identity (login keychain): it gives a STABLE designated requirement
+# (identifier + certificate leaf), so TCC grants (calendar/microphone) survive
+# updates — ad-hoc DRs are per-build cdhashes and reset permissions on every
+# update. No Apple account involved; Gatekeeper behavior is unchanged.
+# Fallback to ad-hoc keeps the script usable on a machine without the key.
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "Ember Signing"; then
+  codesign --force --deep --sign "Ember Signing" "$APP"
+  echo "🔏 signed with Ember Signing (stable TCC identity)"
+else
+  codesign --force --deep --sign - "$APP"
+  echo "⚠️  Ember Signing identity not found — ad-hoc signed (TCC grants will reset on update)"
+fi
 xattr -cr "$APP"
 
 # 5) Native-updater feed: zip + sha256 (asset names MUST end in .zip / .zip.sha256)
