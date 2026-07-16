@@ -18,8 +18,11 @@ public struct SettingsView: View {
     private let onToast: (String, ToastInfo.Tone) -> Void
     @State private var tab: Tab = .general
     @State private var calendarAccess: CalendarTitles.Access = .notDetermined
-    @State private var launchAtLogin = LaunchAtLogin.isEnabled
-    @State private var launchNeedsApproval = LaunchAtLogin.needsApproval
+    // Loaded in onAppear: an @State DEFAULT runs on EVERY struct init — i.e. on
+    // every re-render of the parent — and LaunchAtLogin.isEnabled is an XPC call
+    // into SMAppService, which made Settings lag on each toggle/state change.
+    @State private var launchAtLogin = false
+    @State private var launchNeedsApproval = false
     @State private var pendingDelete: PendingModelDelete?
     @State private var deepseekDraft = ""
     @State private var deepseekModels: [String] = []
@@ -776,6 +779,9 @@ extension SettingsView {
         }
         .opacity(settings.autoSummary ? 1 : 0.5)
 
+        sectionTitle(locale.t("settings.group.liveContext")).padding(.top, 14)
+        overlayCard
+
         sectionTitle(locale.t("settings.group.devices")).padding(.top, 14)
         card {
             VStack(alignment: .leading, spacing: 14) {
@@ -794,6 +800,165 @@ extension SettingsView {
                     note(locale.t("settings.recording.sysNote"))
                 }.padding(.top, 2)
             }
+        }
+    }
+
+    /// Live-context overlay: toggle + a dedicated model route for THIS feature
+    /// (auto / cloud / local 1.7B) — independent from the summary model. The local
+    /// model's download state is surfaced inline so the route is usable right away.
+    private var overlayCard: some View {
+        card {
+            let hasKey = SettingsStore.deepseekKey() != nil
+            // The overlay runs ONLY on the 1.7B pair (bench: ~1.8s/pass; larger
+            // models are too slow for live) or the cloud. Neither available →
+            // the whole feature is disabled with the reason + a download button.
+            let localReady = SummaryCatalog.all.contains {
+                LiveContextLogic.allowedLocalIds.contains($0.id) && summary.states[$0.id] == .ready
+            }
+            let usable = hasKey || localReady
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(locale.t("settings.overlay")).font(EmberType.semibold(15)).foregroundStyle(EmberColor.text)
+                        Text(locale.t("settings.overlay.desc")).font(EmberType.regular(13)).lineSpacing(2)
+                            .foregroundStyle(EmberColor.text2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 16)
+                    EmberToggle(isOn: $settings.liveOverlay)
+                        .disabled(!usable)
+                        .opacity(usable ? 1 : 0.45)
+                }
+                if !usable {
+                    overlayUnavailableNote
+                } else if settings.liveOverlay {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(locale.t("settings.overlay.model"))
+                            .font(EmberType.mono(10.5)).tracking(0.63).textCase(.uppercase)
+                            .foregroundStyle(EmberColor.text3)
+                        // The cloud option is inert without a DeepSeek key — picking
+                        // a route that can never produce anything is a trap.
+                        segmented([
+                            SegItem(label: locale.t("settings.overlay.model.auto"),
+                                    active: settings.liveOverlayModel == "auto") { settings.liveOverlayModel = "auto" },
+                            SegItem(label: locale.t("settings.overlay.model.cloud"),
+                                    active: settings.liveOverlayModel == "cloud") {
+                                if hasKey { settings.liveOverlayModel = "cloud" }
+                            },
+                            SegItem(label: locale.t("settings.overlay.model.local"),
+                                    active: settings.liveOverlayModel == "local") { settings.liveOverlayModel = "local" }
+                        ], group: "seg-overlay")
+                        if !hasKey {
+                            note(locale.t("settings.overlay.cloudNeedsKey"))
+                        }
+                        if settings.liveOverlayModel != "cloud" {
+                            LocalModelSelectField(
+                                caption: locale.t("settings.overlay.localModel"),
+                                models: SummaryCatalog.all.filter {
+                                    LiveContextLogic.allowedLocalIds.contains($0.id)
+                                },
+                                selectedId: settings.liveOverlayLocalModel,
+                                onSelect: { settings.liveOverlayLocalModel = $0 }
+                            )
+                            overlayLocalModelNote
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The overlay has neither a cloud key nor a downloaded 1.7B — explain why
+    /// it's disabled and offer the fastest way out (download the default 1.7B).
+    @ViewBuilder private var overlayUnavailableNote: some View {
+        if let spec = SummaryCatalog.spec(for: LiveContextLogic.localModelId) {
+            switch summary.states[spec.id] ?? .absent {
+            case let .downloading(p):
+                note("\(spec.displayName) — \(Int(p * 100))%")
+            default:
+                VStack(alignment: .leading, spacing: 10) {
+                    note(locale.t("settings.overlay.unavailable.why"))
+                    EmberButton("\(locale.t("model.download")) · \(spec.displayName)", kind: .secondary, height: 30) {
+                        summary.startDownload(id: spec.id, repoId: spec.repoId)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Inline status for the overlay's CHOSEN local model (download from here).
+    @ViewBuilder private var overlayLocalModelNote: some View {
+        if let spec = SummaryCatalog.spec(for: settings.liveOverlayLocalModel) {
+            switch summary.states[spec.id] ?? .absent {
+            case .ready:
+                EmptyView()
+            case let .downloading(p):
+                note("\(spec.displayName) — \(Int(p * 100))%")
+            case .absent, .failed:
+                HStack(spacing: 10) {
+                    note(locale.t("settings.overlay.needsModel"))
+                    EmberButton("\(locale.t("model.download")) · \(spec.displayName)", kind: .secondary, height: 30) {
+                        summary.startDownload(id: spec.id, repoId: spec.repoId)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Dropdown of DOWNLOADED local models for the overlay (DeviceSelectField's
+    /// visual language; the overlay's pick is independent from the summary model).
+    private struct LocalModelSelectField: View {
+        let caption: String
+        let models: [SummaryModelSpec]
+        let selectedId: String
+        let onSelect: (String) -> Void
+        @State private var open = false
+
+        private var currentName: String {
+            (models.first { $0.id == selectedId } ?? models.first
+                ?? SummaryCatalog.spec(for: selectedId))?.displayName ?? selectedId
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(caption).font(EmberType.mono(10.5)).tracking(0.63).textCase(.uppercase).foregroundStyle(EmberColor.text3)
+                Button { open.toggle() } label: {
+                    HStack(spacing: 12) {
+                        Text(currentName).font(EmberType.regular(13.5)).foregroundStyle(EmberColor.text).lineLimit(1)
+                        Spacer(minLength: 8)
+                        EmberIcon(.chevronRight, size: 14, lineWidth: 2, color: EmberColor.text3)
+                            .rotationEffect(.degrees(90))
+                    }
+                    .padding(.horizontal, 14).frame(height: 40).frame(maxWidth: .infinity)
+                    .background(EmberColor.surface)
+                    .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(EmberColor.borderStrong, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hoverCursor()
+                .popover(isPresented: $open, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(models) { m in
+                            Button { onSelect(m.id); open = false } label: {
+                                HStack(spacing: 8) {
+                                    Text(m.displayName).font(EmberType.regular(13)).foregroundStyle(EmberColor.text).lineLimit(1)
+                                    Spacer(minLength: 8)
+                                    if m.id == selectedId {
+                                        EmberIcon(.check, size: 13, lineWidth: 2, color: EmberColor.accent)
+                                    }
+                                }
+                                .padding(.horizontal, 10).frame(height: 32).frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .hoverCursor()
+                        }
+                    }
+                    .padding(6)
+                    .frame(width: 260)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

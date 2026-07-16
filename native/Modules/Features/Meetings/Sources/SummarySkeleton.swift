@@ -2,37 +2,13 @@ import DesignSystem
 import SwiftUI
 
 /// Animated shimmer skeleton shaped like a summary (title, callout, sections,
-/// text lines) — covers the web editor's ~1s cold start. A soft highlight sweeps
-/// across the bars; colors adapt to light/dark via Ember tokens.
+/// text lines) — covers the web editor's ~1s cold start. The sweep itself is the
+/// shared `shimmerSweep()` modifier; colors adapt to light/dark via Ember tokens.
 struct SummarySkeleton: View {
-    @State private var phase: CGFloat = 0
-
     var body: some View {
         shapes
             .foregroundStyle(EmberColor.surface)
-            .overlay {
-                GeometryReader { geo in
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: EmberColor.text.opacity(0.05), location: 0.4),
-                            .init(color: EmberColor.text.opacity(0.09), location: 0.5),
-                            .init(color: EmberColor.text.opacity(0.05), location: 0.6),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .leading, endPoint: .trailing
-                    )
-                    .frame(width: geo.size.width * 0.55)
-                    .offset(x: -geo.size.width * 0.55 + phase * geo.size.width * 1.55)
-                }
-                .mask(shapes)
-                .allowsHitTesting(false)
-            }
-            .onAppear {
-                withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) {
-                    phase = 1
-                }
-            }
+            .shimmerSweep()
     }
 
     private var shapes: some View {

@@ -60,6 +60,38 @@ public struct HaloPulse: ViewModifier {
     }
 }
 
+/// `shimmerSweep` — a soft highlight band sweeping across the view, masked to the
+/// view's own shape. THE skeleton shimmer: no scale, no opacity pulse (a scale
+/// pulse on placeholder bars reads as "zooming", not loading).
+public struct ShimmerSweep: ViewModifier {
+    @State private var phase: CGFloat = 0
+    public init() {}
+    public func body(content: Content) -> some View {
+        content
+            .overlay {
+                GeometryReader { geo in
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: EmberColor.text.opacity(0.05), location: 0.4),
+                            .init(color: EmberColor.text.opacity(0.09), location: 0.5),
+                            .init(color: EmberColor.text.opacity(0.05), location: 0.6),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                    .frame(width: geo.size.width * 0.55)
+                    .offset(x: -geo.size.width * 0.55 + phase * geo.size.width * 1.55)
+                }
+                .mask(content)
+                .allowsHitTesting(false)
+            }
+            .onAppear {
+                withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) { phase = 1 }
+            }
+    }
+}
+
 public extension View {
     func recPulse() -> some View {
         modifier(RecPulse())
@@ -75,5 +107,9 @@ public extension View {
 
     func haloPulse(color: Color, maxScale: CGFloat = 1.6) -> some View {
         modifier(HaloPulse(color: color, maxScale: maxScale))
+    }
+
+    func shimmerSweep() -> some View {
+        modifier(ShimmerSweep())
     }
 }

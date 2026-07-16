@@ -10,8 +10,25 @@ import UserNotifications
 /// Sets the notification-center delegate so notifications also appear while the
 /// app is frontmost (otherwise macOS suppresses them).
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    /// Wired by AppModel.init — quit must drain in-flight ONNX/MLX work first.
+    weak static var model: AppModel?
+
     func applicationDidFinishLaunching(_: Notification) {
         UNUserNotificationCenter.current().delegate = self
+    }
+
+    /// Quit during post-processing crashed the app: exit() runs C++ static
+    /// destructors (ONNX's schema registry) while a sherpa-onnx decode is still
+    /// inside Ort::Session::Run on another thread — ORT throws into the dying
+    /// runtime and the process SIGABRTs. Abort the pipeline, let the last decode
+    /// drain (bounded), then finish quitting.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model = Self.model, model.beginQuitDrain() else { return .terminateNow }
+        Task { @MainActor in
+            await model.awaitQuitDrain()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_: Notification) {

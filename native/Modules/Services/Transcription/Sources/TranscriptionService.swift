@@ -210,6 +210,8 @@ public final class TranscriptionService: ObservableObject {
         }
         let dir = Self.modelDir(model)
         let box = await Task.detached(priority: .userInitiated) { () -> GigaBox? in
+            Self.beginNativeWork()
+            defer { Self.endNativeWork() }
             var config = sherpaOnnxOfflineRecognizerConfig(
                 featConfig: sherpaOnnxFeatureConfig(sampleRate: 16000, featureDim: 64),
                 modelConfig: sherpaOnnxOfflineModelConfig(
@@ -257,6 +259,32 @@ public final class TranscriptionService: ObservableObject {
         abortRequested = false
     }
 
+    /// Count of transcription jobs currently INSIDE sherpa-onnx / WhisperKit
+    /// (decode loops and the ONNX session build). Quit MUST wait for zero:
+    /// exit() runs C++ static destructors (the ONNX OpSchema registry) while a
+    /// background Ort::Session::Run is still executing — ORT then throws into
+    /// the dying runtime and the process aborts (SIGABRT-on-quit crash report).
+    private nonisolated(unsafe) static var inFlightJobs = 0
+    private static let inFlightLock = NSLock()
+
+    public nonisolated static var hasInFlightWork: Bool {
+        inFlightLock.lock()
+        defer { inFlightLock.unlock() }
+        return inFlightJobs > 0
+    }
+
+    fileprivate nonisolated static func beginNativeWork() {
+        inFlightLock.lock()
+        inFlightJobs += 1
+        inFlightLock.unlock()
+    }
+
+    fileprivate nonisolated static func endNativeWork() {
+        inFlightLock.lock()
+        inFlightJobs -= 1
+        inFlightLock.unlock()
+    }
+
     public func unload() {
         if case .transcribing = status { return }
         kit = nil
@@ -283,6 +311,8 @@ public final class TranscriptionService: ObservableObject {
             return await Self.transcribeGiga(giga, samples: samples, meetingId: meetingId, shouldAbort: shouldAbort)
         }
         guard let kit else { return [] }
+        Self.beginNativeWork()
+        defer { Self.endNativeWork() }
         do {
             var stop: TranscriptionCallback = nil
             if interruptible {
@@ -357,6 +387,8 @@ public final class TranscriptionService: ObservableObject {
     private nonisolated static func transcribeGiga(_ box: GigaBox, samples: [Float], meetingId: String,
                                                    shouldAbort: @escaping @Sendable () -> Bool = { false }) async -> [TranscriptSegment] {
         await Task.detached(priority: .userInitiated) {
+            Self.beginNativeWork()
+            defer { Self.endNativeWork() }
             var segs: [TranscriptSegment] = []
             for chunk in Self.gigaChunks(samples) {
                 if shouldAbort() { break }
@@ -528,6 +560,8 @@ public final class TranscriptionService: ObservableObject {
             return await Self.transcribeGiga(giga, samples: samples, meetingId: meetingId)
         }
         guard let kit else { return [] }
+        Self.beginNativeWork()
+        defer { Self.endNativeWork() }
         status = .transcribing
         do {
             let results: [TranscriptionResult] = try await kit.transcribe(audioPath: url.path, decodeOptions: Self.decodeOptions(language: language, strict: strict))

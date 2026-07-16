@@ -28,6 +28,14 @@ public enum SecretStore {
     private static let migrationLock = NSLock()
     private nonisolated(unsafe) static var migrationAttempted = Set<String>()
 
+    /// In-memory cache of decrypted values. `get` used to hit IOKit (hardware
+    /// UUID) + a file read + AES-GCM on EVERY call — and it's called from view
+    /// bodies and the live-overlay tick, which made Settings visibly lag on
+    /// every toggle. Invalidated by set/delete; secrets never change externally.
+    private static let cacheLock = NSLock()
+    private nonisolated(unsafe) static var cache: [String: String?] = [:]
+    private nonisolated(unsafe) static var cachedDeviceKey: SymmetricKey?
+
     /// Persistent per-account tombstone: after an EXPLICIT delete the keychain
     /// migration must never resurrect the value on a later launch (a legacy
     /// keychain item that SecItemDelete failed to remove would otherwise come
@@ -37,12 +45,23 @@ public enum SecretStore {
     }
 
     public static func get(_ account: String) -> String? {
-        if let data = try? Data(contentsOf: fileURL(account)),
-           let box = try? AES.GCM.SealedBox(combined: data),
-           let plain = try? AES.GCM.open(box, using: deviceKey()) {
-            return String(data: plain, encoding: .utf8)
+        cacheLock.lock()
+        if let hit = cache[account] {
+            cacheLock.unlock()
+            return hit
         }
-        return migrateFromKeychain(account)
+        cacheLock.unlock()
+        var value: String? = if let data = try? Data(contentsOf: fileURL(account)),
+                                let box = try? AES.GCM.SealedBox(combined: data),
+                                let plain = try? AES.GCM.open(box, using: deviceKey()) {
+            String(data: plain, encoding: .utf8)
+        } else {
+            migrateFromKeychain(account)
+        }
+        cacheLock.lock()
+        cache[account] = value
+        cacheLock.unlock()
+        return value
     }
 
     @discardableResult
@@ -58,6 +77,9 @@ public enum SecretStore {
         }
         UserDefaults.standard.removeObject(forKey: tombstoneKey(account))
         keychainDelete(account)
+        cacheLock.lock()
+        cache[account] = value
+        cacheLock.unlock()
         return true
     }
 
@@ -65,6 +87,9 @@ public enum SecretStore {
     public static func delete(_ account: String) -> Bool {
         UserDefaults.standard.set(true, forKey: tombstoneKey(account))
         keychainDelete(account)
+        cacheLock.lock()
+        cache.updateValue(nil, forKey: account)
+        cacheLock.unlock()
         let url = fileURL(account)
         guard FileManager.default.fileExists(atPath: url.path) else { return false }
         return (try? FileManager.default.removeItem(at: url)) != nil
@@ -82,9 +107,15 @@ public enum SecretStore {
     }
 
     /// SHA-256(IOPlatformUUID + salt) → AES key. The hardware UUID is stable across
-    /// app updates and OS reinstalls but unique per machine.
+    /// app updates and OS reinstalls but unique per machine. Cached — the IOKit
+    /// registry lookup is not free.
     private static func deviceKey() -> SymmetricKey {
-        SymmetricKey(data: Data(SHA256.hash(data: Data((deviceUUID() + salt).utf8))))
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if let cachedDeviceKey { return cachedDeviceKey }
+        let key = SymmetricKey(data: Data(SHA256.hash(data: Data((deviceUUID() + salt).utf8))))
+        cachedDeviceKey = key
+        return key
     }
 
     private static func deviceUUID() -> String {

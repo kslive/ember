@@ -26,6 +26,8 @@ final class AppModel: ObservableObject {
     let summary = SummaryService()
     let summaryEditor = SummaryEditorModel()
     let callDetect = CallDetectService()
+    let liveContext = LiveContextEngine()
+    private let overlayController = OverlayController()
     private var autoStarted = false
     private static let log = Logger(subsystem: "com.kslff.ember", category: "pipeline")
 
@@ -87,6 +89,9 @@ final class AppModel: ObservableObject {
 
     private var liveTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
+    /// Quit was requested — no new pipeline work may start while the in-flight
+    /// decode drains (see `beginQuitDrain`).
+    private var isQuitting = false
 
     init() {
         for obj in [store.objectWillChange, engine.objectWillChange,
@@ -94,6 +99,9 @@ final class AppModel: ObservableObject {
             obj.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
         }
         summaryEditor.onSave = { [weak self] id, md in self?.saveEditedSummary(meetingId: id, markdown: md) }
+        liveContext.onCloudError = { [weak self] reason in
+            self?.showToast("DeepSeek: \(reason)", tone: .warn)
+        }
         engine.$status
             .removeDuplicates()
             .sink { [weak self] st in
@@ -125,6 +133,7 @@ final class AppModel: ObservableObject {
         if SettingsStore.calendarTitlesOn(), CalendarTitles.accessStatus() == .notDetermined {
             Task { _ = await CalendarTitles.requestAccess() }
         }
+        AppDelegate.model = self
     }
 
     private func notify(_ en: String, _ ru: String, _ zh: String) {
@@ -218,6 +227,7 @@ final class AppModel: ObservableObject {
             recordingStartedAt = Date()
             recordingCalendarTitle = SettingsStore.calendarTitlesOn() ? CalendarTitles.eventTitle(at: Date()) : nil
             startLiveLoop(id)
+            syncLiveOverlay()
             notify("Recording started", "Запись началась", "开始录音")
             if SettingsStore.notifyOnStartOn() { showToast(tr("toast.recReminder"), tone: .warn) } else { showToast(tr("toast.recStarted"), tone: .info) }
         }
@@ -271,6 +281,10 @@ final class AppModel: ObservableObject {
                                         tailFrom: { self.engine.liveSystemSlice(from: $0) })
                 if Task.isCancelled { break }
                 liveSegments = TranscriptMerge.merge(mic: mic.live, system: sys.live)
+                syncLiveOverlay()
+                if SettingsStore.liveOverlayOn() {
+                    liveContext.ingest(text: speakerTranscript(liveSegments))
+                }
                 // Adaptive pacing: never stack decode cycles — if a cycle took longer
                 // than the base interval, rest at least that long (capped at 4s).
                 let d = (ContinuousClock.now - t0).components
@@ -329,6 +343,24 @@ final class AppModel: ObservableObject {
         AppLanguage.current.rawValue
     }
 
+    /// Keeps the overlay in step with the settings toggle DURING a recording:
+    /// flipping it on shows the panel (and warms the engine), flipping it off
+    /// hides the panel and frees the live model.
+    private func syncLiveOverlay() {
+        guard isRecordingActive else { return }
+        // canServe: no DeepSeek key AND no downloaded 1.7B → the overlay has
+        // nothing to run on; Settings shows the disabled state with the reason.
+        if SettingsStore.liveOverlayOn(), liveContext.canServe {
+            if !overlayController.isVisible, !overlayController.dismissedForSession {
+                overlayController.show(engine: liveContext)
+                if liveContext.phase == .idle { Task { await liveContext.start() } }
+            }
+        } else if overlayController.isVisible {
+            overlayController.hide()
+            liveContext.stop()
+        }
+    }
+
     /// An AUTO session shorter than this is a phantom (a push woke some app's
     /// full-duplex sound engine / a speech daemon held the mic for 10–20s), not a
     /// call — real calls run minutes. Discarded instead of saved. Manual recordings
@@ -339,6 +371,8 @@ final class AppModel: ObservableObject {
     /// auto session shorter than the threshold is a push/daemon mic-blip, not a call.
     /// A USER-pressed stop always saves — even a short auto-started recording.
     func stopRecording(language: AppLanguage, discardIfPhantom: Bool = false) {
+        overlayController.end()
+        liveContext.stop()
         let live = liveTask
         liveTask?.cancel()
         liveTask = nil
@@ -440,7 +474,7 @@ final class AppModel: ObservableObject {
     /// re-checks `isRecordingActive` before every job so a new call pauses the queue
     /// — the engine-status sink re-triggers the drain when it ends.
     private func drainIfIdle() {
-        guard !isDraining, !deferredQueue.isEmpty, !isRecordingActive else { return }
+        guard !isQuitting, !isDraining, !deferredQueue.isEmpty, !isRecordingActive else { return }
         isDraining = true
         drainTask = Task {
             while !deferredQueue.isEmpty, !isRecordingActive, !Task.isCancelled {
@@ -687,9 +721,12 @@ final class AppModel: ObservableObject {
     private func cloudSummary(text: String, lang: String, systemOverride: String?) async -> String? {
         guard let key = SettingsStore.deepseekKey() else { return nil }
         do {
-            var model = SettingsStore.deepseekModelId()
-            if model == nil { model = try await DeepSeekClient.listModels(key: key).first }
-            guard let model else { return nil }
+            // Re-validate the stored id against /models on every summary: DeepSeek
+            // RETIRES model ids (deepseek-chat/-reasoner die 2026-07-24) — a stale
+            // stored id would fail every cloud summary until the user re-picked one.
+            guard let model = try await DeepSeekClient.resolveModel(
+                key: key, stored: SettingsStore.deepseekModelId(), preferFast: false
+            ) else { return nil }
             return try await summary.summarizeCloud(key: key, model: model, transcript: text,
                                                     languageCode: lang, systemOverride: systemOverride)
         } catch {
@@ -872,6 +909,57 @@ final class AppModel: ObservableObject {
         case .ru: "Новая запись"
         case .zh: "新录音"
         case .en: "New recording"
+        }
+    }
+}
+
+/// Quit-drain: exit() runs C++ static destructors (the ONNX OpSchema registry)
+/// while a background Ort::Session::Run may still be executing — ORT then throws
+/// into the dying runtime and the process SIGABRTs (the crash-on-quit report).
+extension AppModel {
+    /// Called from `applicationShouldTerminate`. Aborts the whole pipeline
+    /// (token-level MLX, per-window Whisper, per-chunk GigaAM) so the in-flight
+    /// decode is the LAST one, and — when quitting mid-recording — saves the live
+    /// transcript so the meeting isn't lost.
+    /// Returns false when it's already safe to exit right now.
+    func beginQuitDrain() -> Bool {
+        let mustDrain = TranscriptionService.hasInFlightWork || !processingIds.isEmpty || isRecordingActive
+        guard mustDrain else { return false }
+        guard !isQuitting else { return true }
+        isQuitting = true
+        liveTask?.cancel()
+        drainTask?.cancel()
+        overlayController.end()
+        liveContext.stop()
+        summary.requestAbort()
+        transcription.requestAbort()
+        if isRecordingActive {
+            let liveFinal = liveSegments.filter { TranscriptionService.hasSpeech($0.text) }
+            liveSegments = []
+            let (mic, system) = engine.stop()
+            if let mic { try? FileManager.default.removeItem(at: mic) }
+            if let system { try? FileManager.default.removeItem(at: system) }
+            if !liveFinal.isEmpty {
+                let id = recordingId ?? UUID().uuidString
+                store.upsert(Meeting(id: id, title: recordingCalendarTitle ?? defaultTitle(.current),
+                                     createdAt: recordingStartedAt ?? Date(), durationSeconds: engine.elapsed))
+                store.saveTranscript(meetingId: id, segments: liveFinal)
+            }
+            engine.reset()
+            recordingId = nil
+        }
+        return true
+    }
+
+    /// Waits (bounded) until no decode is inside sherpa-onnx/WhisperKit. Requires a
+    /// few consecutive clear samples — an aborting pass may enter one last decode
+    /// right after a single check.
+    func awaitQuitDrain() async {
+        var clear = 0
+        for _ in 0 ..< 80 {
+            clear = TranscriptionService.hasInFlightWork ? 0 : clear + 1
+            if clear >= 3 { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
     }
 }

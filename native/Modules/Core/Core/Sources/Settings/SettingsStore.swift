@@ -17,6 +17,9 @@ public final class SettingsStore: ObservableObject {
     public static let summaryTemplateKey = "ember.summaryTemplate"
     public static let calendarTitlesKey = "ember.calendarTitles"
     public static let deepseekModelKey = "ember.deepseekModel"
+    public static let liveOverlayKey = "ember.liveOverlay"
+    public static let liveOverlayModelKey = "ember.liveOverlayModel"
+    public static let liveOverlayLocalModelKey = "ember.liveOverlayLocalModel"
     private static let deepseekAccount = "deepseek-api-key"
 
     @Published public var summaryModelId: String {
@@ -75,6 +78,23 @@ public final class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(deepseekModel, forKey: Self.deepseekModelKey) }
     }
 
+    /// Live-context overlay over all windows during recording. Default OFF.
+    @Published public var liveOverlay: Bool {
+        didSet { UserDefaults.standard.set(liveOverlay, forKey: Self.liveOverlayKey) }
+    }
+
+    /// Overlay model route: "auto" (cloud → local), "cloud" (DeepSeek only) or
+    /// "local" (a downloaded local model).
+    @Published public var liveOverlayModel: String {
+        didSet { UserDefaults.standard.set(liveOverlayModel, forKey: Self.liveOverlayModelKey) }
+    }
+
+    /// Which LOCAL model the overlay uses (its own pick, independent from the
+    /// summary model — the overlay wants small & fast).
+    @Published public var liveOverlayLocalModel: String {
+        didSet { UserDefaults.standard.set(liveOverlayLocalModel, forKey: Self.liveOverlayLocalModelKey) }
+    }
+
     public init() {
         summaryModelId = UserDefaults.standard.string(forKey: Self.summaryKey) ?? SummaryCatalog.defaultId
         whisperModelId = UserDefaults.standard.string(forKey: Self.whisperKey) ?? TranscriptionCatalog.defaultId
@@ -88,6 +108,10 @@ public final class SettingsStore: ObservableObject {
         summaryTemplateId = UserDefaults.standard.string(forKey: Self.summaryTemplateKey) ?? SummaryTemplates.standardId
         calendarTitlesEnabled = (UserDefaults.standard.object(forKey: Self.calendarTitlesKey) as? Bool) ?? false
         deepseekModel = UserDefaults.standard.string(forKey: Self.deepseekModelKey) ?? ""
+        liveOverlay = (UserDefaults.standard.object(forKey: Self.liveOverlayKey) as? Bool) ?? false
+        liveOverlayModel = UserDefaults.standard.string(forKey: Self.liveOverlayModelKey) ?? "auto"
+        liveOverlayLocalModel = UserDefaults.standard.string(forKey: Self.liveOverlayLocalModelKey)
+            ?? LiveContextLogic.localModelId
     }
 
     /// Meeting titles from Apple Calendar (opt-in; default off).
@@ -140,6 +164,23 @@ public final class SettingsStore: ObservableObject {
 
     public static func deferredProcessingOn() -> Bool {
         (UserDefaults.standard.object(forKey: deferredProcessingKey) as? Bool) ?? false
+    }
+
+    public static func liveOverlayOn() -> Bool {
+        (UserDefaults.standard.object(forKey: liveOverlayKey) as? Bool) ?? false
+    }
+
+    /// Overlay model route ("auto" / "cloud" / "local"); unknown values → "auto".
+    public static func liveOverlayModelRoute() -> String {
+        let v = UserDefaults.standard.string(forKey: liveOverlayModelKey) ?? "auto"
+        return ["auto", "cloud", "local"].contains(v) ? v : "auto"
+    }
+
+    /// The overlay's local model pick (validated against the ALLOWED 1.7B pair —
+    /// larger models are post-summary-only, too slow for live).
+    public static func liveOverlayLocalModelId() -> String {
+        let v = UserDefaults.standard.string(forKey: liveOverlayLocalModelKey) ?? LiveContextLogic.localModelId
+        return LiveContextLogic.allowedLocalIds.contains(v) ? v : LiveContextLogic.localModelId
     }
 
     public static func currentSummaryTemplateId() -> String {

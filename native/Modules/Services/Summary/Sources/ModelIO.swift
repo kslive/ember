@@ -124,7 +124,18 @@ final class TokenizerBridge: MLXLMCommon.Tokenizer, @unchecked Sendable {
     ) throws -> [Int] {
         let plain = messages.map { $0 as [String: Any] }
         if let templateOverride {
-            return try upstream.applyChatTemplate(messages: plain, chatTemplate: templateOverride)
+            // The FULL overload: the short `(messages:chatTemplate:)` one silently
+            // dropped `additionalContext`, so template flags like Qwen3's
+            // `enable_thinking=false` never reached override-rendered models.
+            return try upstream.applyChatTemplate(
+                messages: plain,
+                chatTemplate: .literal(templateOverride),
+                addGenerationPrompt: true,
+                truncation: false,
+                maxLength: nil,
+                tools: tools.map { $0.map { $0 as [String: Any] } },
+                additionalContext: additionalContext.map { $0 as [String: Any] }
+            )
         }
         do {
             return try upstream.applyChatTemplate(

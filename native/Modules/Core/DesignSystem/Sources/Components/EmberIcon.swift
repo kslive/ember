@@ -7,7 +7,7 @@ public struct EmberIcon: View {
         case search, home, settings, globe, mic, pause, play
         case download, check, close, chevronRight, trash, sparkle
         case lock, bolt, file, arrowRight
-        case waves
+        case waves, copy, minus
     }
 
     private let glyph: Glyph
@@ -105,6 +105,21 @@ public struct EmberIcon: View {
             case .close:
                 line([CGPoint(x: 6, y: 6), CGPoint(x: 18, y: 18)])
                 line([CGPoint(x: 18, y: 6), CGPoint(x: 6, y: 18)])
+
+            case .minus:
+                line([CGPoint(x: 6, y: 12), CGPoint(x: 18, y: 12)])
+
+            case .copy:
+                arc { p in
+                    p.addRoundedRect(in: CGRect(x: 9, y: 9, width: 12, height: 12),
+                                     cornerSize: CGSize(width: 2, height: 2))
+                }
+                arc { p in
+                    p.move(to: CGPoint(x: 15.5, y: 5))
+                    p.addLine(to: CGPoint(x: 7, y: 5))
+                    p.addQuadCurve(to: CGPoint(x: 4.5, y: 7.5), control: CGPoint(x: 4.5, y: 5))
+                    p.addLine(to: CGPoint(x: 4.5, y: 15.5))
+                }
 
             case .chevronRight:
                 line([CGPoint(x: 9, y: 6), CGPoint(x: 15, y: 12), CGPoint(x: 9, y: 18)])

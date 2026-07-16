@@ -32,6 +32,43 @@ final class DeepSeekClientTests: XCTestCase {
         XCTAssertThrowsError(try DeepSeekClient.decodeModels(Data("not json".utf8)))
     }
 
+    /// SSE line → event: content deltas pass through; keep-alive comments (DeepSeek
+    /// sends them for MINUTES under load), empty lines, event fields and role-only
+    /// chunks are ignored; [DONE] terminates.
+    func testStreamEventParsing() {
+        XCTAssertEqual(
+            DeepSeekClient.streamEvent(#"data: {"choices":[{"delta":{"content":"Хей"}}]}"#),
+            .delta("Хей")
+        )
+        XCTAssertEqual(DeepSeekClient.streamEvent("data: [DONE]"), .done)
+        XCTAssertEqual(DeepSeekClient.streamEvent(": keep-alive"), .ignore)
+        XCTAssertEqual(DeepSeekClient.streamEvent(""), .ignore)
+        XCTAssertEqual(DeepSeekClient.streamEvent("event: message"), .ignore)
+        XCTAssertEqual(
+            DeepSeekClient.streamEvent(#"data: {"choices":[{"delta":{"role":"assistant"}}]}"#),
+            .ignore
+        )
+        XCTAssertEqual(DeepSeekClient.streamEvent("data: not-json"), .ignore)
+    }
+
+    /// Model re-resolution: stored-if-still-served; retired ids (deepseek-chat dies
+    /// 2026-07-24) fall through to a live one; the overlay path (preferFast) always
+    /// lands on a non-thinking flash.
+    func testPickModel() {
+        let models = ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-thinking"]
+        XCTAssertEqual(DeepSeekClient.pickModel(from: models, stored: "deepseek-v4-pro", preferFast: false),
+                       "deepseek-v4-pro")
+        XCTAssertEqual(DeepSeekClient.pickModel(from: models, stored: "deepseek-chat", preferFast: false),
+                       "deepseek-v4-flash")
+        XCTAssertEqual(DeepSeekClient.pickModel(from: models, stored: "deepseek-v4-pro", preferFast: true),
+                       "deepseek-v4-flash")
+        XCTAssertEqual(DeepSeekClient.pickModel(from: models, stored: nil, preferFast: true),
+                       "deepseek-v4-flash")
+        XCTAssertEqual(DeepSeekClient.pickModel(from: ["deepseek-reasoner"], stored: nil, preferFast: true),
+                       "deepseek-reasoner")
+        XCTAssertNil(DeepSeekClient.pickModel(from: [], stored: "x", preferFast: false))
+    }
+
     func testSecretStoreRoundTrip() {
         let account = "test-deepseek-key-\(UUID().uuidString)"
         defer { SecretStore.delete(account) }
