@@ -1,12 +1,15 @@
 import ProjectDescription
 
-// MARK: - Shared settings (ad-hoc signing only — no Apple certificates, like Sage)
+// MARK: - Shared settings (automatic signing with the App Store team)
 
 let baseSettings: SettingsDictionary = [
-    "CODE_SIGN_IDENTITY": "-",
-    "CODE_SIGN_STYLE": "Manual",
-    "DEVELOPMENT_TEAM": "",
+    "CODE_SIGN_IDENTITY": "Apple Development",
+    "CODE_SIGN_STYLE": "Automatic",
+    "DEVELOPMENT_TEAM": "YX6VKW92JQ",
     "ENABLE_HARDENED_RUNTIME": "YES",
+    // MLX runs on Apple Silicon only — no x86_64 slice, so the Mac App Store
+    // doesn't offer the app to Intel Macs.
+    "ARCHS": "arm64",
     "SWIFT_VERSION": "5.0",
     "MARKETING_VERSION": "1.6.1",
     "CURRENT_PROJECT_VERSION": "15",
@@ -55,9 +58,6 @@ let summaryService = mod("SummaryService", path: "Modules/Services/Summary", dep
 let persistenceService = mod("PersistenceService", path: "Modules/Services/Persistence", deps: [
     .target(name: "Core"), .external(name: "GRDB"),
 ])
-let updaterService = mod("UpdaterService", path: "Modules/Services/Updater", deps: [
-    .target(name: "Core"),
-])
 let onboardingFeature = mod("OnboardingFeature", path: "Modules/Features/Onboarding", deps: [
     .target(name: "Core"), .target(name: "DesignSystem"),
     .target(name: "TranscriptionService"), .target(name: "SummaryService"),
@@ -72,7 +72,7 @@ let meetingsFeature = mod("MeetingsFeature", path: "Modules/Features/Meetings", 
 ], hasResources: true)
 let settingsFeature = mod("SettingsFeature", path: "Modules/Features/Settings", deps: [
     .target(name: "Core"), .target(name: "DesignSystem"),
-    .target(name: "TranscriptionService"), .target(name: "SummaryService"), .target(name: "UpdaterService"),
+    .target(name: "TranscriptionService"), .target(name: "SummaryService"),
 ])
 
 // mlx-swift looks for its Metal shader library colocated with the Cmlx binary as
@@ -80,7 +80,9 @@ let settingsFeature = mod("SettingsFeature", path: "Modules/Features/Settings", 
 // the framework as `Resources/default.metallib`. Without this, MLX aborts with
 // "Failed to load the default metallib" the moment it touches the GPU (summary
 // generation). Copy default.metallib → Resources/mlx.metallib (satisfies the
-// always-compiled colocated "Resources/mlx" lookup) and re-sign the framework.
+// always-compiled colocated "Resources/mlx" lookup) and re-sign the framework
+// with the target's own identity: an ad-hoc nested framework would fail App Store
+// validation. Runs before Xcode's final app signature, so the app seal stays valid.
 let fixMetallibScript = TargetScript.post(
     script: #"""
     set -e
@@ -88,7 +90,7 @@ let fixMetallibScript = TargetScript.post(
     RES="${FW}/Versions/A/Resources"; [ -d "${RES}" ] || RES="${FW}/Resources"
     if [ -f "${RES}/default.metallib" ]; then
         cp -f "${RES}/default.metallib" "${RES}/mlx.metallib"
-        codesign --force --sign - --timestamp=none "${FW}" 2>/dev/null || true
+        codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --timestamp=none "${FW}"
         echo "metallib fix: created ${RES}/mlx.metallib + re-signed Cmlx.framework"
     else
         echo "metallib fix: default.metallib not found under ${FW} (skipped)"
@@ -116,11 +118,11 @@ let app = Target.target(
     name: "Ember",
     destinations: .macOS,
     product: .app,
-    bundleId: "com.kslff.ember",
+    bundleId: "com.kslff.ember.app",
     deploymentTargets: deploymentTargets,
     infoPlist: .file(path: "App/Resources/Info.plist"),
     sources: ["App/Sources/**"],
-    resources: ["App/Resources/Assets.xcassets"],
+    resources: ["App/Resources/Assets.xcassets", "App/Resources/PrivacyInfo.xcprivacy"],
     entitlements: .file(path: "App/Resources/Ember.entitlements"),
     scripts: [lintScript, fixMetallibScript],
     dependencies: [
@@ -131,7 +133,6 @@ let app = Target.target(
         .target(name: "TranscriptionService"),
         .target(name: "SummaryService"),
         .target(name: "PersistenceService"),
-        .target(name: "UpdaterService"),
         .target(name: "OnboardingFeature"),
         .target(name: "RecordingFeature"),
         .target(name: "MeetingsFeature"),
@@ -167,7 +168,7 @@ let project = Project(
     settings: .settings(base: baseSettings),
     targets: [
         core, designSystem,
-        audioService, callDetectService, transcriptionService, summaryService, persistenceService, updaterService,
+        audioService, callDetectService, transcriptionService, summaryService, persistenceService,
         onboardingFeature, recordingFeature, meetingsFeature, settingsFeature,
         app, tests,
     ],

@@ -5,13 +5,11 @@ import SummaryService
 import SwiftUI
 import TranscriptionService
 import UniformTypeIdentifiers
-import UpdaterService
 
 public struct SettingsView: View {
     @EnvironmentObject private var locale: LocaleManager
     @EnvironmentObject private var theme: ThemeManager
     @EnvironmentObject private var settings: SettingsStore
-    @EnvironmentObject private var updater: UpdaterService
     @EnvironmentObject private var templateStore: TemplateStore
     @ObservedObject private var transcription: TranscriptionService
     @ObservedObject private var summary: SummaryService
@@ -44,7 +42,7 @@ public struct SettingsView: View {
     }
 
     enum Tab: String, CaseIterable {
-        case general, recording, transcription, summary, updates
+        case general, recording, transcription, summary
         var key: String {
             "settings.tab.\(rawValue)"
         }
@@ -55,7 +53,6 @@ public struct SettingsView: View {
             case .recording: .mic
             case .transcription: .waves
             case .summary: .sparkle
-            case .updates: .download
             }
         }
     }
@@ -152,7 +149,6 @@ public struct SettingsView: View {
         case .recording: recordingTab
         case .transcription: modelsTab(transcription: true)
         case .summary: modelsTab(transcription: false)
-        case .updates: updatesTab
         }
     }
 
@@ -454,51 +450,6 @@ public struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
-    @ViewBuilder private var updatesTab: some View {
-        card {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(updateTitle).font(EmberType.semibold(15)).foregroundStyle(EmberColor.text)
-                    Text("\(locale.t("settings.version")) \(appVersion)").font(EmberType.mono(12)).foregroundStyle(EmberColor.text3)
-                }
-                Spacer()
-                updateAction
-            }
-        }
-        card {
-            HStack {
-                Text(locale.t("settings.autoUpdate")).font(EmberType.regular(14)).foregroundStyle(EmberColor.text)
-                Spacer()
-                EmberToggle(isOn: $updater.autoUpdate)
-            }
-        }
-    }
-
-    private var updateTitle: String {
-        switch updater.phase {
-        case .checking: locale.t("update.checking")
-        case let .available(r): locale.t("update.available", ["v": r.version])
-        case let .downloading(p): locale.t("update.downloading", ["p": String(Int(p * 100))])
-        case .installing: locale.t("update.downloading", ["p": "100"])
-        case let .readyToInstall(r): locale.t("update.readyToInstall", ["v": r.version])
-        case let .failed(m): m
-        case .idle, .upToDate: locale.t("settings.upToDate")
-        }
-    }
-
-    @ViewBuilder private var updateAction: some View {
-        switch updater.phase {
-        case .available:
-            EmberButton(locale.t("update.download"), kind: .primary, height: 34) { updater.update() }
-        case .readyToInstall:
-            EmberButton(locale.t("update.restart"), kind: .primary, height: 34) { updater.restart() }
-        case .checking, .downloading, .installing:
-            ProgressView().controlSize(.small)
-        case .idle, .upToDate, .failed:
-            EmberButton(locale.t("settings.checkUpdates"), kind: .secondary, height: 34) { updater.checkNow() }
-        }
-    }
-
     private var themeSegmented: some View {
         segmented([
             SegItem(label: locale.t("settings.theme.light"), symbol: "sun.max", active: theme.theme == .light) { theme.setTheme(.light) },
@@ -671,7 +622,7 @@ public struct SettingsView: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = locale.t("common.choose")
-        if panel.runModal() == .OK, let url = panel.url { settings.exportFolderPath = url.path }
+        if panel.runModal() == .OK, let url = panel.url { settings.setExportFolder(url) }
     }
 
     /// The data folder holding `ember.sqlite` (saved transcriptions + summaries) — NOT audio.
@@ -750,10 +701,6 @@ public struct SettingsView: View {
 
     private var sizeUnit: String {
         locale.language == .ru ? "МБ" : "MB"
-    }
-
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.3.0"
     }
 
     private func badgeText(_ b: ModelBadge?) -> String? {

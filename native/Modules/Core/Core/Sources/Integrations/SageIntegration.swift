@@ -5,7 +5,7 @@ import Foundation
 /// installed. Deep link: `sage://open?path=<file>` — added to Sage in tandem with
 /// this integration. Older Sage builds without the scheme just get activated.
 public enum SageIntegration {
-    public static let bundleId = "com.sage.app"
+    public static let bundleId = "com.kslff.sage.app"
 
     /// Canonical install first; the LaunchServices lookup is only a fallback (e.g.
     /// ~/Applications) because LS keeps stale registrations after the app was

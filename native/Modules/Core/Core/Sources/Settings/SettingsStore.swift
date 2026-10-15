@@ -11,6 +11,7 @@ public final class SettingsStore: ObservableObject {
     public static let notificationsKey = "ember.notifications"
     public static let notifyOnStartKey = "ember.notifyOnStart"
     public static let exportFolderKey = "ember.exportFolder"
+    public static let exportFolderBookmarkKey = "ember.exportFolder.bookmark"
     public static let micDeviceKey = "ember.micDevice"
     public static let systemDeviceKey = "ember.systemDevice"
     public static let deferredProcessingKey = "ember.deferredProcessing"
@@ -47,7 +48,8 @@ public final class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(notifyOnStart, forKey: Self.notifyOnStartKey) }
     }
 
-    /// Folder where exported meeting `.md` summaries are written.
+    /// Folder where exported meeting `.md` summaries are written. Change it via
+    /// `setExportFolder(_:)` so the sandbox grant survives relaunch.
     @Published public var exportFolderPath: String {
         didSet { UserDefaults.standard.set(exportFolderPath, forKey: Self.exportFolderKey) }
     }
@@ -101,6 +103,7 @@ public final class SettingsStore: ObservableObject {
         autoSummary = (UserDefaults.standard.object(forKey: Self.autoSummaryKey) as? Bool) ?? true
         notificationsEnabled = (UserDefaults.standard.object(forKey: Self.notificationsKey) as? Bool) ?? true
         notifyOnStart = (UserDefaults.standard.object(forKey: Self.notifyOnStartKey) as? Bool) ?? true
+        _ = Self.exportFolderAccess
         exportFolderPath = UserDefaults.standard.string(forKey: Self.exportFolderKey) ?? Self.defaultExportFolder()
         preferredMicUID = UserDefaults.standard.string(forKey: Self.micDeviceKey) ?? ""
         preferredSystemUID = UserDefaults.standard.string(forKey: Self.systemDeviceKey) ?? ""
@@ -205,7 +208,31 @@ public final class SettingsStore: ObservableObject {
 
     /// Chosen export folder (falls back to ~/Documents/Ember).
     public static func exportFolder() -> String {
+        _ = exportFolderAccess
         let v = UserDefaults.standard.string(forKey: exportFolderKey) ?? ""
         return v.isEmpty ? defaultExportFolder() : v
+    }
+
+    /// Persists a user-picked export folder. Under App Sandbox an NSOpenPanel grant
+    /// lasts only until quit; the security-scoped bookmark restores it on later launches.
+    public func setExportFolder(_ url: URL) {
+        UserDefaults.standard.set(Self.securityScopedBookmark(for: url), forKey: Self.exportFolderBookmarkKey)
+        exportFolderPath = url.path
+    }
+
+    /// Sandbox access to the previously picked export folder: reopened once per launch
+    /// from its bookmark and held until quit (nil = never picked or unresolvable).
+    private static let exportFolderAccess: URL? = {
+        guard let data = UserDefaults.standard.data(forKey: exportFolderBookmarkKey) else { return nil }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope,
+                                 relativeTo: nil, bookmarkDataIsStale: &stale),
+              url.startAccessingSecurityScopedResource() else { return nil }
+        if stale { UserDefaults.standard.set(securityScopedBookmark(for: url), forKey: exportFolderBookmarkKey) }
+        return url
+    }()
+
+    private static func securityScopedBookmark(for url: URL) -> Data? {
+        try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
     }
 }
