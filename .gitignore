@@ -4,7 +4,6 @@
 
 # dependencies
 /node_modules
-**/models
 /.pnp
 .pnp.*
 .yarn/*
@@ -13,6 +12,17 @@
 !.yarn/releases
 !.yarn/versions
 *.mp4
+
+# Downloaded model weights. Ember fetches its models at runtime into ~/Library, so
+# none belong in the repo. Match file types and anchored paths only: a bare
+# `models` pattern also matches Swift `Models/` source folders (core.ignorecase).
+/models/
+*.onnx
+*.gguf
+*.safetensors
+*.mlmodelc/
+*.mlpackage/
+ggml-*.bin
 
 # testing
 /coverage
@@ -98,3 +108,6 @@ frontend/src-tauri/mlx-helper/.build/
 
 # Release build artifacts
 native/dist/
+
+# Safety net: Swift model sources are never ignored, whatever matches above.
+!native/**/Sources/Models/
