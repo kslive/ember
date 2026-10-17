@@ -4,7 +4,6 @@ import Core
 import DesignSystem
 import OnboardingFeature
 import SwiftUI
-import UpdaterService
 import UserNotifications
 
 /// Sets the notification-center delegate so notifications also appear while the
@@ -33,7 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationWillTerminate(_: Notification) {
         RecordingEngine.purgeRecordings()
-        UpdaterService.applyPendingOnQuit()
     }
 
     func userNotificationCenter(_: UNUserNotificationCenter,
@@ -49,7 +47,6 @@ struct EmberApp: App {
     @StateObject private var locale = LocaleManager()
     @StateObject private var theme = ThemeManager()
     @StateObject private var settings = SettingsStore()
-    @StateObject private var updater = UpdaterService()
     @StateObject private var templates = TemplateStore()
     @StateObject private var model = AppModel()
     @AppStorage("ember.onboarded") private var onboarded = false
@@ -72,12 +69,10 @@ struct EmberApp: App {
             .environmentObject(locale)
             .environmentObject(theme)
             .environmentObject(settings)
-            .environmentObject(updater)
             .environmentObject(templates)
             .preferredColorScheme(theme.theme.colorScheme)
             .id(theme.accentId)
             .frame(minWidth: 920, minHeight: 600)
-            .task { if onboarded { updater.checkInBackground() } }
             .onChange(of: locale.language) { _, _ in templates.reload() }
         }
         .windowStyle(.hiddenTitleBar)
