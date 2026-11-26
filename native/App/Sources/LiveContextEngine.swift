@@ -292,8 +292,16 @@ final class LiveContextEngine: ObservableObject {
             let ok = await withTaskGroup(of: Bool.self) { group in
                 group.addTask { [cachedCloudModel] in
                     guard let model = cachedCloudModel else { return false }
-                    return await (try? DeepSeekClient.chat(key: key, model: model, system: "ping", user: "ping",
-                                                           maxTokens: 1, timeout: 8)) != nil
+                    do {
+                        _ = try await DeepSeekClient.chat(key: key, model: model, system: "ping", user: "ping",
+                                                          maxTokens: 1, timeout: 8)
+                        return true
+                    } catch DeepSeekClient.ClientError.outputTokenLimit {
+                        // A one-token probe can exhaust its budget on a healthy API.
+                        return true
+                    } catch {
+                        return false
+                    }
                 }
                 group.addTask {
                     try? await Task.sleep(for: .seconds(10))

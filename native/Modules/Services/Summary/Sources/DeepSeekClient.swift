@@ -5,14 +5,18 @@ import Foundation
 /// Settings; every failure falls back to the local MLX model. Model ids are always
 /// fetched from GET /models (never hardcoded — DeepSeek renames/deprecates them).
 public enum DeepSeekClient {
-    public enum ClientError: LocalizedError {
+    public enum ClientError: LocalizedError, Equatable {
         case http(Int, String)
         case emptyResponse
+        case outputTokenLimit
+        case incompleteResponse(String)
 
         public var errorDescription: String? {
             switch self {
             case let .http(code, body): "DeepSeek HTTP \(code): \(body.prefix(200))"
             case .emptyResponse: "DeepSeek returned an empty response"
+            case .outputTokenLimit: "DeepSeek reached its token limit before finishing"
+            case let .incompleteResponse(reason): "DeepSeek stopped before finishing (\(reason))"
             }
         }
     }
@@ -61,6 +65,17 @@ public enum DeepSeekClient {
         let (data, resp) = try await session.data(for: req)
         try checkHTTP(resp, data: data)
         return try decodeChat(data)
+    }
+
+    /// Thinking models share the completion budget between reasoning and visible
+    /// text. Retry a capped summary once with more room for both.
+    static func completeSummary(using complete: (Int) async throws -> String) async throws -> String {
+        do {
+            return try await complete(16_384)
+        } catch ClientError.outputTokenLimit {
+            try Task.checkCancellation()
+            return try await complete(65_536)
+        }
     }
 
     /// Streaming chat completion (SSE, `stream: true`). `onText` receives the FULL
@@ -178,9 +193,14 @@ public enum DeepSeekClient {
     }
 
     static func decodeChat(_ data: Data) throws -> String {
-        let text = try JSONDecoder().decode(DeepSeekChatResponse.self, from: data)
-            .choices.first?.message.content?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let response = try JSONDecoder().decode(DeepSeekChatResponse.self, from: data)
+        guard let choice = response.choices.first else { throw ClientError.emptyResponse }
+        switch choice.finishReason {
+        case "stop": break
+        case "length": throw ClientError.outputTokenLimit
+        default: throw ClientError.incompleteResponse(choice.finishReason)
+        }
+        let text = choice.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !text.isEmpty else { throw ClientError.emptyResponse }
         return text
     }
@@ -193,7 +213,15 @@ struct DeepSeekModelsResponse: Decodable {
 
 struct DeepSeekChatResponse: Decodable {
     struct Message: Decodable { let content: String? }
-    struct Choice: Decodable { let message: Message }
+    struct Choice: Decodable {
+        let message: Message
+        let finishReason: String
+
+        enum CodingKeys: String, CodingKey {
+            case message
+            case finishReason = "finish_reason"
+        }
+    }
     let choices: [Choice]
 }
 

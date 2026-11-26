@@ -22,10 +22,73 @@ final class DeepSeekClientTests: XCTestCase {
     }
 
     func testDecodeChatEmptyContentThrows() {
-        let json = Data(#"{"choices":[{"message":{"role":"assistant","content":"   "}}]}"#.utf8)
-        XCTAssertThrowsError(try DeepSeekClient.decodeChat(json))
+        let json = Data(#"{"choices":[{"message":{"role":"assistant","content":"   "},"finish_reason":"stop"}]}"#.utf8)
+        XCTAssertThrowsError(try DeepSeekClient.decodeChat(json)) { error in
+            XCTAssertEqual(error as? DeepSeekClient.ClientError, .emptyResponse)
+        }
         let none = Data(#"{"choices":[]}"#.utf8)
         XCTAssertThrowsError(try DeepSeekClient.decodeChat(none))
+    }
+
+    func testDecodeChatRejectsTruncatedContent() {
+        let partial = Data(#"{"choices":[{"message":{"content":"The next step is to"},"finish_reason":"length"}]}"#.utf8)
+        let reasoningOnly = Data(#"{"choices":[{"message":{"content":null,"reasoning_content":"Processing"},"finish_reason":"length"}]}"#.utf8)
+        for json in [partial, reasoningOnly] {
+            XCTAssertThrowsError(try DeepSeekClient.decodeChat(json)) { error in
+                XCTAssertEqual(error as? DeepSeekClient.ClientError, .outputTokenLimit)
+            }
+        }
+    }
+
+    func testDecodeChatRejectsOtherIncompleteResponses() {
+        let filtered = Data(#"{"choices":[{"message":{"content":"Some text"},"finish_reason":"content_filter"}]}"#.utf8)
+        XCTAssertThrowsError(try DeepSeekClient.decodeChat(filtered)) { error in
+            XCTAssertEqual(error as? DeepSeekClient.ClientError, .incompleteResponse("content_filter"))
+        }
+        let missing = Data(#"{"choices":[{"message":{"content":"Some text"}}]}"#.utf8)
+        XCTAssertThrowsError(try DeepSeekClient.decodeChat(missing))
+    }
+
+    func testCompleteSummaryRetriesWithLargerBudget() async throws {
+        var budgets: [Int] = []
+        let markdown = try await DeepSeekClient.completeSummary { budget in
+            budgets.append(budget)
+            let response = budgets.count == 1
+                ? #"{"choices":[{"message":{"content":"The next step is to"},"finish_reason":"length"}]}"#
+                : #"{"choices":[{"message":{"content":"The next step is to review the draft."},"finish_reason":"stop"}]}"#
+            return try DeepSeekClient.decodeChat(Data(response.utf8))
+        }
+        XCTAssertEqual(budgets, [16_384, 65_536])
+        XCTAssertEqual(markdown, "The next step is to review the draft.")
+    }
+
+    func testCompleteSummaryStopsAfterSecondTokenLimit() async {
+        var attempts = 0
+        do {
+            _ = try await DeepSeekClient.completeSummary { _ in
+                attempts += 1
+                throw DeepSeekClient.ClientError.outputTokenLimit
+            }
+            XCTFail("Expected token limit error")
+        } catch {
+            XCTAssertEqual(error as? DeepSeekClient.ClientError, .outputTokenLimit)
+        }
+        XCTAssertEqual(attempts, 2)
+    }
+
+    func testCompleteSummaryDoesNotRetryOtherFailures() async {
+        var attempts = 0
+        let failure = DeepSeekClient.ClientError.incompleteResponse("aborted")
+        do {
+            _ = try await DeepSeekClient.completeSummary { _ in
+                attempts += 1
+                throw failure
+            }
+            XCTFail("Expected incomplete response error")
+        } catch {
+            XCTAssertEqual(error as? DeepSeekClient.ClientError, failure)
+        }
+        XCTAssertEqual(attempts, 1)
     }
 
     func testDecodeModelsGarbageThrows() {

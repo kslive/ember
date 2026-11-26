@@ -247,14 +247,15 @@ public final class SummaryService: ObservableObject {
         status = .generating
         defer { if case .generating = status { status = container != nil ? .ready : .idle } }
         let capped = String(transcript.suffix(400_000))
-        let raw = try await DeepSeekClient.chat(
-            key: key, model: model,
-            system: systemOverride ?? SummaryPrompts.system(language: languageCode),
-            user: SummaryPrompts.user(transcript: capped, facts: "",
-                                      roster: SummaryGrounding.roster(fromTranscript: capped),
-                                      numbers: SummaryGrounding.keyNumbers(fromTranscript: capped),
-                                      language: languageCode)
-        )
+        let system = systemOverride ?? SummaryPrompts.system(language: languageCode)
+        let user = SummaryPrompts.user(transcript: capped, facts: "",
+                                       roster: SummaryGrounding.roster(fromTranscript: capped),
+                                       numbers: SummaryGrounding.keyNumbers(fromTranscript: capped),
+                                       language: languageCode)
+        let raw = try await DeepSeekClient.completeSummary { maxTokens in
+            try await DeepSeekClient.chat(key: key, model: model, system: system, user: user,
+                                         maxTokens: maxTokens)
+        }
         let md = SummarySanitize.clean(ThinkStripper.strip(raw), transcript: transcript)
         guard !md.isEmpty else { throw DeepSeekClient.ClientError.emptyResponse }
         return md
